@@ -29,8 +29,7 @@ function generateFormFactors(...lineups) {
     for (const p of lineup) {
       if (!p) continue;
       const key = playerKey(p);
-      if (factors[key] !== undefined) continue;
-      factors[key] = p.isUser ? 1.0 : FORM_MIN + Math.random() * (FORM_MAX - FORM_MIN);
+      factors[key] = p.isUser ? rand(1.25, 1.75) : FORM_MIN + Math.random() * (FORM_MAX - FORM_MIN);
     }
   }
   return factors;
@@ -40,7 +39,7 @@ function generateFormFactors(...lineups) {
 // SIMULATION
 // ============================================================
 function simulateInnings(batSquad, bowlSquad, formFactors, target = null) {
-  let totalRuns = 0, wickets = 0, balls = 0;
+  let totalRuns = 0, wickets = 0, balls = 0, extras = 0;
 
   let batXI = [...batSquad.slice(0, 11)];
   const batIP = batSquad[11];
@@ -61,19 +60,35 @@ function simulateInnings(batSquad, bowlSquad, formFactors, target = null) {
   allBatters[0].batted = true;
   allBatters[1].batted = true;
 
+  // Initialize Bowlers
+  let activeBowlers = bowlXI.filter(p => p.bowls).map(p => ({
+    player: p, balls: 0, runs: 0, wickets: 0, econ: 0
+  }));
+
+  // Use up to MAX_ACTIVE_BOWLERS bowlers, prioritized by economy
+  activeBowlers = activeBowlers.sort((a, b) => a.player.bowlEcon - b.player.bowlEcon).slice(0, Math.min(MAX_ACTIVE_BOWLERS, activeBowlers.length));
+
+  let lastBowlerIdx = -1;
+
   while (balls < MAX_BALLS && wickets < 10) {
     if (target !== null && totalRuns >= target) break;
 
+    // Batting Impact Player logic
     if (batIP && !batImpactUsed && wickets >= IMPACT_WICKET_THRESHOLD) {
       let worstIdx = -1;
-      let worstAvg = 999;
+      let worstScore = 9999;
+      let isDeathOvers = balls >= 90; // 15th over onwards
+
       for (let k = nextIdx; k < 11; k++) {
-        if (allBatters[k].player.batAvg < worstAvg) {
-          worstAvg = allBatters[k].player.batAvg;
+        if (allBatters[k].player.isUser) continue; // Protect user
+        let score = isDeathOvers ? allBatters[k].player.batSR : allBatters[k].player.batAvg;
+        if (score < worstScore) {
+          worstScore = score;
           worstIdx = k;
         }
       }
-      if (worstIdx !== -1 && batIP.batAvg > worstAvg) {
+      let ipScore = isDeathOvers ? batIP.batSR : batIP.batAvg;
+      if (worstIdx !== -1 && ipScore > worstScore) {
         batSubOut = batXI[worstIdx];
         batXI[worstIdx] = batIP;
         batXI[worstIdx].isImpact = true;
@@ -82,24 +97,76 @@ function simulateInnings(batSquad, bowlSquad, formFactors, target = null) {
       }
     }
 
-    let ballsThisOver = Math.min(6, MAX_BALLS - balls);
-    for (let b = 0; b < ballsThisOver; b++) {
-      if (wickets >= 10 || (target !== null && totalRuns >= target)) break;
+    // Bowling Impact Player logic
+    if (bowlIP && !bowlImpactUsed && bowlIP.bowls) {
+      let exhaustedBowlerIdx = activeBowlers.findIndex(b => b.balls >= MAX_BALLS_PER_BOWLER && b.player !== bowlIP && !b.player.isUser); // Protect user
+      if (exhaustedBowlerIdx !== -1) {
+        bowlSubOut = activeBowlers[exhaustedBowlerIdx].player;
+        activeBowlers.push({ player: bowlIP, balls: 0, runs: 0, wickets: 0, econ: 0 });
+        bowlIP.isImpact = true;
+        bowlImpactUsed = true;
+      }
+    }
+
+    // Select Bowler for this over using round-robin to ensure even distribution and max 4 overs
+    let currentBowlerIdx = -1;
+    for (let offset = 1; offset <= activeBowlers.length; offset++) {
+      let idx = (lastBowlerIdx + offset) % activeBowlers.length;
+      if (activeBowlers[idx].balls < MAX_BALLS_PER_BOWLER) {
+        currentBowlerIdx = idx;
+        break;
+      }
+    }
+    
+    // Fallback if all bowlers exhausted (shouldn't happen before 20 overs)
+    if (currentBowlerIdx === -1) break;
+    
+    lastBowlerIdx = currentBowlerIdx;
+    let bowler = activeBowlers[currentBowlerIdx];    let legalBallsThisOver = 0;
+    while (legalBallsThisOver < 6 && balls < MAX_BALLS && wickets < 10) {
+      if (target !== null && totalRuns >= target) break;
 
       let striker = allBatters[strikerIdx];
+
+      // Extras logic
+      if (Math.random() < 0.04) {
+        // Wide or No Ball
+        extras++;
+        totalRuns++;
+        bowler.runs++;
+        continue; // Does not count as a legal ball
+      }
+
+      // Legal delivery
+      legalBallsThisOver++;
       striker.balls++;
+      bowler.balls++;
       balls++;
 
+      // Form and powerplay factors
       const isPowerplay = balls <= POWERPLAY_BALLS;
-      const form = formFactors[playerKey(striker.player)] ?? 1;
-      let batSR = striker.player.batSR * form;
-      let batAvg = striker.player.batAvg * form;
-      if (isPowerplay) { batSR *= 1.15; batAvg *= 0.95; }
+      const batForm = formFactors[playerKey(striker.player)] ?? 1;
+      const bowlForm = formFactors[playerKey(bowler.player)] ?? 1;
+      
+      let batSR = striker.player.batSR * batForm;
+      let batAvg = striker.player.batAvg * batForm;
+      let bowlSR = bowler.player.bowlSR / Math.max(0.1, bowlForm);
+      let bowlEcon = bowler.player.bowlEcon / Math.max(0.1, bowlForm);
 
-      let outProb = 1 / Math.max(1, ((batAvg * 100) / batSR));
+      if (isPowerplay) { 
+        batSR *= 1.15; batAvg *= 0.95; 
+        bowlEcon *= 1.15; bowlSR *= 1.05; // slightly worse for bowlers
+      }
+
+      // Ball outcome probability combining batter and bowler stats
+      let batOutProb = (batSR / 100) / Math.max(1, batAvg);
+      let bowlOutProb = 1 / Math.max(1, bowlSR);
+      let outProb = (batOutProb + bowlOutProb) / 2;
+
       if (Math.random() < outProb) {
         striker.out = true;
         wickets++;
+        bowler.wickets++;
         if (wickets < 10 && nextIdx < 11) {
           strikerIdx = nextIdx++;
           allBatters[strikerIdx].batted = true;
@@ -107,14 +174,17 @@ function simulateInnings(batSquad, bowlSquad, formFactors, target = null) {
         continue;
       }
 
+      let batRPB = batSR / 100;
+      let bowlRPB = bowlEcon / 6;
+      let rpb = (batRPB + bowlRPB) / 2;
+
       let runProb = Math.random();
       let runScored = 0;
-      let srFactor = batSR / 100;
 
-      let p6 = 0.06 * srFactor;
-      let p4 = p6 + 0.08 * srFactor;
-      let p2 = p4 + 0.05 * srFactor;
-      let p1 = p2 + 0.25 * srFactor;
+      let p6 = 0.06 * rpb;
+      let p4 = p6 + 0.08 * rpb;
+      let p2 = p4 + 0.05 * rpb;
+      let p1 = p2 + 0.25 * rpb;
 
       if (runProb < p6) { runScored = 6; striker.sixes++; }
       else if (runProb < p4) { runScored = 4; striker.fours++; }
@@ -129,6 +199,7 @@ function simulateInnings(batSquad, bowlSquad, formFactors, target = null) {
       }
 
       striker.runs += runScored;
+      bowler.runs += runScored;
       totalRuns += runScored;
 
       if (runScored === 1 || runScored === 3) {
@@ -137,6 +208,8 @@ function simulateInnings(batSquad, bowlSquad, formFactors, target = null) {
         nonStrikerIdx = temp;
       }
     }
+
+    // Switch ends at the end of the over
     let temp = strikerIdx;
     strikerIdx = nonStrikerIdx;
     nonStrikerIdx = temp;
@@ -147,83 +220,7 @@ function simulateInnings(batSquad, bowlSquad, formFactors, target = null) {
     return b;
   });
 
-  const extras = randInt(2, 12);
-  totalRuns += extras;
-
-  let activeBowlers = bowlXI.filter(p => p.bowls);
-  if (bowlIP && !bowlImpactUsed && bowlIP.bowls) {
-    const sortedBowlers = [...activeBowlers].sort((a, b) => b.bowlEcon - a.bowlEcon);
-    if (sortedBowlers.length > 0 && bowlIP.bowlEcon < sortedBowlers[0].bowlEcon) {
-      const worstBowler = sortedBowlers[0];
-      const idx = activeBowlers.indexOf(worstBowler);
-      bowlSubOut = worstBowler;
-      activeBowlers[idx] = bowlIP;
-      bowlIP.isImpact = true;
-      bowlImpactUsed = true;
-    }
-  }
-
-  activeBowlers = activeBowlers.slice(0, Math.min(MAX_ACTIVE_BOWLERS, activeBowlers.length));
-
-  const bowlerStats = activeBowlers.map(b => ({ player: b, balls: 0, runs: 0, wickets: 0, econ: 0 }));
-  let bRem = balls;
-
-  for (let b of bowlerStats) {
-    if (bRem >= 6) { b.balls += 6; bRem -= 6; }
-    else if (bRem > 0) { b.balls += bRem; bRem = 0; }
-  }
-
-  let bIdx = 0;
-  let guard = 0;
-  while (bRem > 0 && guard < 50) {
-    const b = bowlerStats[bIdx];
-    if (b.balls < MAX_BALLS_PER_BOWLER) {
-      if (bRem >= 6) { b.balls += 6; bRem -= 6; }
-      else { b.balls += bRem; bRem = 0; }
-    }
-    bIdx = (bIdx + 1) % bowlerStats.length;
-    guard++;
-  }
-
-  const targetBowlerRuns = Math.max(0, totalRuns - Math.floor(extras / 2));
-  let runsToDistribute = targetBowlerRuns;
-
-  let totalWeights = bowlerStats.reduce((sum, b) => sum + (b.player.bowlEcon * b.balls), 0);
-
-  for (let i = 0; i < bowlerStats.length; i++) {
-    let b = bowlerStats[i];
-    if (b.balls === 0) continue;
-
-    if (i === bowlerStats.length - 1) {
-      b.runs = runsToDistribute;
-    } else {
-      let expectedRuns = totalWeights > 0 ? Math.round((b.player.bowlEcon * b.balls) / totalWeights * targetBowlerRuns) : 0;
-      b.runs = Math.min(runsToDistribute, expectedRuns);
-      runsToDistribute -= b.runs;
-    }
-  }
-
-  let wktLeft = wickets;
-  const wktWeights = bowlerStats.map(b => b.balls > 0 ? (b.balls / b.player.bowlSR) : 0);
-  guard = 0;
-  while (wktLeft > 0 && guard < 50) {
-    const tot = wktWeights.reduce((s, w) => s + w, 0);
-    if (tot === 0) break;
-    let r = Math.random() * tot;
-    for (let i = 0; i < bowlerStats.length; i++) {
-      r -= wktWeights[i];
-      if (r <= 0) { bowlerStats[i].wickets++; wktLeft--; break; }
-    }
-    guard++;
-  }
-
-  let validBowlers = bowlerStats.filter(b => b.balls > 0);
-  while (wktLeft > 0 && validBowlers.length > 0) {
-    validBowlers[randInt(0, validBowlers.length - 1)].wickets++;
-    wktLeft--;
-  }
-
-  const bowlersCard = validBowlers.map(b => {
+  const bowlersCard = activeBowlers.filter(b => b.balls > 0).map(b => {
     const oversInt = Math.floor(b.balls / 6);
     const oversRem = b.balls % 6;
     const oversStr = oversRem === 0 ? String(oversInt) : `${oversInt}.${oversRem}`;
@@ -232,7 +229,7 @@ function simulateInnings(batSquad, bowlSquad, formFactors, target = null) {
       player: b.player,
       overs: oversStr,
       balls: b.balls,
-      runs: Math.max(0, b.runs),
+      runs: b.runs,
       wickets: b.wickets,
       econ: oversNum > 0 ? Math.round((b.runs / oversNum) * 10) / 10 : 0,
     };
@@ -290,6 +287,23 @@ export function simulateMatch(homeId, awayId, userName, playersMap, label = 'Lea
   const formFactors = generateFormFactors(homeLineup, awayLineup);
 
   const inn1 = simulateInnings(firstBatSquad, firstBowlSquad, formFactors);
+
+  // Dynamic user form adjustment based on 1st innings performance
+  if (formFactors[userKey]) {
+    let userBatted = inn1.battersCard.find(b => b.player.isUser);
+    let userBowled = inn1.bowlersCard.find(b => b.player.isUser);
+
+    if (userBatted) {
+      if (userBatted.runs < 25) {
+        formFactors[userKey] += 0.75; // Boost bowling
+      }
+    } else if (userBowled) {
+      if (userBowled.wickets === 0 || userBowled.econ > 9.0) {
+        formFactors[userKey] += 0.75; // Boost batting
+      }
+    }
+  }
+
   const target = inn1.totalRuns + 1;
   const inn2 = simulateInnings(secondBatSquad, secondBowlSquad, formFactors, target);
 
@@ -332,42 +346,36 @@ export function pickGodModeMatches(schedule, userTeam, minCount, maxCount) {
 // SCHEDULE
 // ============================================================
 export function generateSchedule() {
-  const teamIds = TEAMS.map(t => t.id);
-  const counts = Object.fromEntries(teamIds.map(id => [id, 0]));
+  const teamIds = shuffle(TEAMS.map(t => t.id));
+  const groupA = teamIds.slice(0, 5);
+  const groupB = teamIds.slice(5, 10);
+  
   const matches = [];
 
-  for (let i = 0; i < teamIds.length; i++) {
-    for (let j = i + 1; j < teamIds.length; j++) {
-      const [a, b] = Math.random() < 0.5 ? [teamIds[i], teamIds[j]] : [teamIds[j], teamIds[i]];
-      matches.push({ home: a, away: b });
-      counts[a]++; counts[b]++;
+  const addMatch = (t1, t2) => {
+    const [home, away] = Math.random() < 0.5 ? [t1, t2] : [t2, t1];
+    matches.push({ home, away });
+  };
+
+  // 1. Intra-group (play twice)
+  for (let i = 0; i < 5; i++) {
+    for (let j = i + 1; j < 5; j++) {
+      addMatch(groupA[i], groupA[j]);
+      addMatch(groupA[i], groupA[j]);
+      
+      addMatch(groupB[i], groupB[j]);
+      addMatch(groupB[i], groupB[j]);
     }
   }
 
-  const allPairs = [];
-  for (let i = 0; i < teamIds.length; i++) {
-    for (let j = i + 1; j < teamIds.length; j++) allPairs.push([teamIds[i], teamIds[j]]);
-  }
-  shuffle(allPairs).forEach(([a, b]) => {
-    if (counts[a] < LEAGUE_MATCHES_PER_TEAM && counts[b] < LEAGUE_MATCHES_PER_TEAM) {
-      const [h, w] = Math.random() < 0.5 ? [a, b] : [b, a];
-      matches.push({ home: h, away: w });
-      counts[a]++; counts[b]++;
-    }
-  });
-
-  let guard = 0;
-  while (!teamIds.every(t => counts[t] === LEAGUE_MATCHES_PER_TEAM) && guard < 50) {
-    for (const a of teamIds) {
-      if (counts[a] >= LEAGUE_MATCHES_PER_TEAM) continue;
-      for (const b of teamIds) {
-        if (b === a || counts[b] >= LEAGUE_MATCHES_PER_TEAM) continue;
-        matches.push({ home: a, away: b });
-        counts[a]++; counts[b]++;
-        break;
+  // 2. Inter-group (play once, plus row-equivalent plays twice)
+  for (let i = 0; i < 5; i++) {
+    for (let j = 0; j < 5; j++) {
+      addMatch(groupA[i], groupB[j]);
+      if (i === j) {
+        addMatch(groupA[i], groupB[j]);
       }
     }
-    guard++;
   }
 
   return shuffle(matches);

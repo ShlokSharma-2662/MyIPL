@@ -1,5 +1,5 @@
 import React from 'react';
-import { Trophy, User, BarChart3, Calendar, Crown } from 'lucide-react';
+import { Trophy, User, BarChart3, Calendar, Crown, BookOpen } from 'lucide-react';
 
 export default function TabNav({ tab, setTab }) {
   const tabs = [
@@ -7,6 +7,7 @@ export default function TabNav({ tab, setTab }) {
     { id: 'results', label: 'Results', icon: Calendar },
     { id: 'stats', label: 'Orange / Purple', icon: Crown },
     { id: 'me', label: 'My Profile', icon: User },
+    { id: 'history', label: 'History', icon: BookOpen },
     { id: 'playoffs', label: 'Playoffs', icon: Trophy },
   ];
   return (

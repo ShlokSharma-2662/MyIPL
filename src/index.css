@@ -23,3 +23,7 @@ body {
 
 .no-scrollbar::-webkit-scrollbar { display: none; }
 .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+.app-bg {
+  background: radial-gradient(ellipse at top, #1a1208 0%, #0a0a0a 50%), #0a0a0a;
+}

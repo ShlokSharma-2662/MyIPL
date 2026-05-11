@@ -28,17 +28,24 @@ export default function MyProfile({ userName, results, playerStats }) {
   }
 
   const avgSR = me.balls > 0 ? ((me.runs / me.balls) * 100).toFixed(1) : '-';
-  const avg = me.outs > 0 ? (me.runs / me.outs).toFixed(1) : me.runs;
   const econ = me.ballsBowled > 0 ? (me.runsConceded / (me.ballsBowled / 6)).toFixed(2) : '-';
-  const bowlSR = me.wkts > 0 ? (me.ballsBowled / me.wkts).toFixed(1) : '-';
+  const batAvg = me.outs > 0 ? (me.runs / me.outs).toFixed(1) : (me.runs > 0 ? me.runs.toFixed(1) : '-');
+  const bowlAvg = me.wkts > 0 ? (me.runsConceded / me.wkts).toFixed(1) : '-';
 
   return (
     <div>
-      <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-8">
-        <StatCard label="RUNS" value={me.runs} sub={`${me.M} matches`} accent="amber" />
-        <StatCard label="STRIKE RATE" value={avgSR} sub={`avg ${avg}`} accent="amber" />
-        <StatCard label="WICKETS" value={me.wkts} sub={`econ ${econ}`} accent="fuchsia" />
-        <StatCard label="BOWL SR" value={bowlSR} sub={`${me.ballsBowled} balls`} accent="fuchsia" />
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-8">
+        <StatCard label="MATCHES" value={me.M} sub="Played" accent="zinc" />
+        <StatCard label="RUNS" value={me.runs} sub="Total" accent="amber" />
+        <StatCard label="BAT AVG" value={batAvg} sub="Average" accent="amber" />
+        <StatCard label="STRIKE RATE" value={avgSR} sub="Batting" accent="amber" />
+        <StatCard label="HIGHEST" value={me.HS} sub="Score" accent="amber" />
+
+        <StatCard label="WICKETS" value={me.wkts} sub={`${me.ballsBowled} balls`} accent="fuchsia" />
+        <StatCard label="BOWL AVG" value={bowlAvg} sub="Average" accent="fuchsia" />
+        <StatCard label="ECONOMY" value={econ} sub="Bowling" accent="fuchsia" />
+        <StatCard label="100s" value={me.hundreds} sub="Centuries" accent="amber" />
+        <StatCard label="50s" value={me.fifties} sub="Fifties" accent="amber" />
       </div>
 
       <h3 className="text-xs tracking-[0.3em] text-zinc-400 mb-3 font-bold">MATCH BY MATCH</h3>

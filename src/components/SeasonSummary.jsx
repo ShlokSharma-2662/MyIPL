@@ -1,8 +1,29 @@
 import React, { useRef } from 'react';
-import { Trophy, Crown, Medal, Share2, RotateCcw } from 'lucide-react';
+import { Trophy, Crown, Medal, Share2, RotateCcw, Star, Flame, Zap } from 'lucide-react';
 import TeamBadge from './TeamBadge';
 import { TEAMS } from '../data';
 import { USER_TEAM } from '../constants';
+
+const AwardCard = ({ title, icon: Icon, colorClass, borderClass, playerStat, primaryStat, secondaryStat }) => {
+  if (!playerStat) return null;
+  return (
+    <div className={`bg-black/40 border ${borderClass} rounded-xl p-4 transition-transform hover:-translate-y-1`}>
+      <div className="flex items-center gap-2 mb-3">
+        <Icon className={`w-4 h-4 ${colorClass}`} />
+        <div className={`text-[10px] tracking-[0.3em] ${colorClass} font-bold uppercase`}>{title}</div>
+      </div>
+      <div className="flex items-center gap-3">
+        <TeamBadge teamId={playerStat.player.team} size="sm" />
+        <div>
+          <div className={`font-bold text-sm ${playerStat.player.isUser ? 'text-amber-400' : 'text-zinc-100'}`}>
+            {playerStat.player.name}
+          </div>
+          <div className="text-xs text-zinc-500 font-mono">{primaryStat} • {secondaryStat}</div>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 export default function SeasonSummary({ champion, allPlayerStats, userName, tourney, onReset }) {
   const cardRef = useRef(null);
@@ -11,13 +32,15 @@ export default function SeasonSummary({ champion, allPlayerStats, userName, tour
   const championTeam = TEAMS.find(t => t.id === champion);
   const me = allPlayerStats[`USER:${userName}`];
 
-  const orangeCap = Object.values(allPlayerStats)
-    .filter(s => s.runs > 0)
-    .sort((a, b) => b.runs - a.runs)[0];
+  const allPlayers = Object.values(allPlayerStats);
 
-  const purpleCap = Object.values(allPlayerStats)
-    .filter(s => s.wkts > 0)
-    .sort((a, b) => b.wkts - a.wkts)[0];
+  const orangeCap = allPlayers.filter(s => s.runs > 0).sort((a, b) => b.runs - a.runs)[0];
+  const purpleCap = allPlayers.filter(s => s.wkts > 0).sort((a, b) => b.wkts - a.wkts)[0];
+  const maxSixes = allPlayers.filter(s => s.sixes > 0).sort((a, b) => b.sixes - a.sixes)[0];
+  const mvp = allPlayers.sort((a, b) => (b.runs + b.wkts * 25) - (a.runs + a.wkts * 25))[0];
+  const superStriker = allPlayers
+    .filter(s => s.runs >= 100)
+    .sort((a, b) => (b.runs / b.balls) - (a.runs / a.balls))[0];
 
   const cskWon = champion === USER_TEAM;
   const meSR = me && me.balls > 0 ? ((me.runs / me.balls) * 100).toFixed(1) : '-';
@@ -27,6 +50,7 @@ export default function SeasonSummary({ champion, allPlayerStats, userName, tour
 ${cskWon ? '🎉 WE DID IT! CSK lifted the trophy!' : ''}
 🧡 Orange Cap: ${orangeCap?.player.name} (${orangeCap?.runs} runs)
 💜 Purple Cap: ${purpleCap?.player.name} (${purpleCap?.wkts} wickets)
+⭐ MVP: ${mvp?.player.name}
 ${me ? `\n👤 ${userName}: ${me.runs} runs @ SR ${meSR} | ${me.wkts} wickets @ econ ${meEcon}` : ''}`;
 
   const onShare = async () => {
@@ -48,7 +72,7 @@ ${me ? `\n👤 ${userName}: ${me.runs} runs @ SR ${meSR} | ${me.wkts} wickets @ 
         <div className="absolute top-0 inset-x-0 h-1 bg-gradient-to-r from-amber-500 via-amber-400 to-amber-500" />
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] bg-amber-500/10 blur-[120px] rounded-full pointer-events-none" />
 
-        <div className="relative z-10 text-center mb-6">
+        <div className="relative z-10 text-center mb-8">
           <Trophy className="w-12 h-12 text-amber-400 mx-auto mb-3 drop-shadow-[0_0_15px_rgba(251,191,36,0.5)]" />
           <div className="text-[10px] tracking-[0.4em] text-amber-400 mb-1 font-bold">SEASON SUMMARY</div>
           <h2 className="text-4xl font-black mb-1" style={{ fontFamily: 'Bebas Neue' }}>{tourney.toUpperCase()}</h2>
@@ -68,37 +92,32 @@ ${me ? `\n👤 ${userName}: ${me.runs} runs @ SR ${meSR} | ${me.wkts} wickets @ 
           )}
         </div>
 
-        <div className="grid sm:grid-cols-2 gap-4 relative z-10 mb-6">
-          {orangeCap && (
-            <div className="bg-black/40 border border-orange-500/30 rounded-xl p-4">
-              <div className="flex items-center gap-2 mb-3">
-                <Crown className="w-4 h-4 text-orange-400" />
-                <div className="text-[10px] tracking-[0.3em] text-orange-400 font-bold">ORANGE CAP</div>
-              </div>
-              <div className="flex items-center gap-3">
-                <TeamBadge teamId={orangeCap.player.team} size="sm" />
-                <div>
-                  <div className={`font-bold text-sm ${orangeCap.player.isUser ? 'text-amber-400' : 'text-zinc-100'}`}>{orangeCap.player.name}</div>
-                  <div className="text-xs text-zinc-500 font-mono">{orangeCap.runs} runs • {orangeCap.M} matches</div>
-                </div>
-              </div>
-            </div>
-          )}
-          {purpleCap && (
-            <div className="bg-black/40 border border-fuchsia-500/30 rounded-xl p-4">
-              <div className="flex items-center gap-2 mb-3">
-                <Medal className="w-4 h-4 text-fuchsia-400" />
-                <div className="text-[10px] tracking-[0.3em] text-fuchsia-400 font-bold">PURPLE CAP</div>
-              </div>
-              <div className="flex items-center gap-3">
-                <TeamBadge teamId={purpleCap.player.team} size="sm" />
-                <div>
-                  <div className={`font-bold text-sm ${purpleCap.player.isUser ? 'text-amber-400' : 'text-zinc-100'}`}>{purpleCap.player.name}</div>
-                  <div className="text-xs text-zinc-500 font-mono">{purpleCap.wkts} wickets • {purpleCap.M} matches</div>
-                </div>
-              </div>
-            </div>
-          )}
+        <div className="relative z-10 mb-8">
+          <div className="text-xs tracking-[0.3em] text-zinc-500 font-bold mb-4 text-center">SEASON AWARDS</div>
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            <AwardCard 
+              title="Orange Cap" icon={Crown} colorClass="text-orange-400" borderClass="border-orange-500/30"
+              playerStat={orangeCap} primaryStat={`${orangeCap?.runs} runs`} secondaryStat={`${orangeCap?.M} matches`} 
+            />
+            <AwardCard 
+              title="Purple Cap" icon={Medal} colorClass="text-fuchsia-400" borderClass="border-fuchsia-500/30"
+              playerStat={purpleCap} primaryStat={`${purpleCap?.wkts} wickets`} secondaryStat={`${purpleCap?.M} matches`} 
+            />
+            <AwardCard 
+              title="Most Valuable" icon={Star} colorClass="text-yellow-400" borderClass="border-yellow-500/30"
+              playerStat={mvp} primaryStat={`${mvp?.runs}R, ${mvp?.wkts}W`} secondaryStat={`${mvp?.M} matches`} 
+            />
+            <AwardCard 
+              title="Maximum Sixes" icon={Flame} colorClass="text-red-400" borderClass="border-red-500/30"
+              playerStat={maxSixes} primaryStat={`${maxSixes?.sixes} sixes`} secondaryStat={`${maxSixes?.M} matches`} 
+            />
+            <AwardCard 
+              title="Super Striker" icon={Zap} colorClass="text-cyan-400" borderClass="border-cyan-500/30"
+              playerStat={superStriker} 
+              primaryStat={`SR ${superStriker ? ((superStriker.runs / superStriker.balls) * 100).toFixed(1) : 0}`} 
+              secondaryStat={`${superStriker?.runs} runs`} 
+            />
+          </div>
         </div>
 
         {me && (

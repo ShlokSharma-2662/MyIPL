@@ -18,68 +18,96 @@ export function computeNRR(s) {
   return Math.round((rf - ra) * 1000) / 1000;
 }
 
-export function recalcAll(matchResults, userName) {
-  const teamStats = {};
-  TEAMS.forEach(t => teamStats[t.id] = blankTeamStat());
+export function accumulateMatchStats(existingTeamStats, existingPlayerStats, m, userName) {
+  const teamStats = { ...existingTeamStats };
+  const playerStats = { ...existingPlayerStats };
 
-  const playerStats = {};
+  function ensureTeam(id) {
+    if (!teamStats[id]) teamStats[id] = blankTeamStat();
+    return teamStats[id];
+  }
 
-  function ensure(p) {
+  function ensurePlayer(p) {
     const key = p.isUser ? `USER:${userName}` : `${p.team}:${p.name}`;
     if (!playerStats[key]) playerStats[key] = { ...blankPlayerStat(), player: p, key };
     return playerStats[key];
   }
 
-  for (const m of matchResults) {
-    const t1 = teamStats[m.battingFirst];
-    const t2 = teamStats[m.battingSecond];
-    t1.P++; t2.P++;
+  const t1Id = m.battingFirst;
+  const t2Id = m.battingSecond;
+  
+  ensureTeam(t1Id);
+  ensureTeam(t2Id);
+  
+  // Clone to avoid mutating existing state
+  const t1 = { ...teamStats[t1Id] };
+  const t2 = { ...teamStats[t2Id] };
+  
+  t1.P++; t2.P++;
 
-    t1.runsFor += m.inn1.totalRuns;
-    t1.ballsFor += Math.min(m.inn1.balls, 120);
-    t1.runsAgainst += m.inn2.totalRuns;
-    t1.ballsAgainst += Math.min(m.inn2.balls, 120);
+  t1.runsFor += m.inn1.totalRuns;
+  t1.ballsFor += Math.min(m.inn1.balls, 120);
+  t1.runsAgainst += m.inn2.totalRuns;
+  t1.ballsAgainst += Math.min(m.inn2.balls, 120);
 
-    t2.runsFor += m.inn2.totalRuns;
-    t2.ballsFor += Math.min(m.inn2.balls, 120);
-    t2.runsAgainst += m.inn1.totalRuns;
-    t2.ballsAgainst += Math.min(m.inn1.balls, 120);
+  t2.runsFor += m.inn2.totalRuns;
+  t2.ballsFor += Math.min(m.inn2.balls, 120);
+  t2.runsAgainst += m.inn1.totalRuns;
+  t2.ballsAgainst += Math.min(m.inn1.balls, 120);
 
-    if (m.winner === m.battingFirst) { t1.W++; t1.Pts += 2; t2.L++; }
-    else if (m.winner === m.battingSecond) { t2.W++; t2.Pts += 2; t1.L++; }
+  if (m.winner === t1Id) { t1.W++; t1.Pts += 2; t2.L++; }
+  else if (m.winner === t2Id) { t2.W++; t2.Pts += 2; t1.L++; }
 
-    const all = [
-      ...m.inn1.battersCard.map(x => ({ ...x, side: 'bat' })),
-      ...m.inn2.battersCard.map(x => ({ ...x, side: 'bat' })),
-      ...m.inn1.bowlersCard.map(x => ({ ...x, side: 'bowl' })),
-      ...m.inn2.bowlersCard.map(x => ({ ...x, side: 'bowl' })),
-    ];
+  teamStats[t1Id] = t1;
+  teamStats[t2Id] = t2;
 
-    const seenThisMatch = new Set();
+  const all = [
+    ...m.inn1.battersCard.map(x => ({ ...x, side: 'bat' })),
+    ...m.inn2.battersCard.map(x => ({ ...x, side: 'bat' })),
+    ...m.inn1.bowlersCard.map(x => ({ ...x, side: 'bowl' })),
+    ...m.inn2.bowlersCard.map(x => ({ ...x, side: 'bowl' })),
+  ];
 
-    for (const entry of all) {
-      const s = ensure(entry.player);
-      if (!seenThisMatch.has(s.key)) { s.M++; seenThisMatch.add(s.key); }
-      if (entry.side === 'bat') {
-        s.runs += entry.runs;
-        s.balls += entry.balls;
-        s.fours += entry.fours;
-        s.sixes += entry.sixes;
-        if (entry.out) s.outs++;
-        if (entry.runs >= 50 && entry.runs < 100) s.fifties++;
-        if (entry.runs >= 100) s.hundreds++;
-        if (entry.runs > s.HS) s.HS = entry.runs;
-      } else {
-        s.wkts += entry.wickets;
-        s.runsConceded += entry.runs;
-        s.ballsBowled += entry.balls;
-        if (entry.wickets > s.bestW || (entry.wickets === s.bestW && entry.runs < s.bestR)) {
-          s.bestW = entry.wickets;
-          s.bestR = entry.runs;
-        }
+  const seenThisMatch = new Set();
+
+  for (const entry of all) {
+    const pKey = entry.player.isUser ? `USER:${userName}` : `${entry.player.team}:${entry.player.name}`;
+    const s = { ...ensurePlayer(entry.player) };
+    
+    if (!seenThisMatch.has(s.key)) { s.M++; seenThisMatch.add(s.key); }
+    if (entry.side === 'bat') {
+      s.runs += entry.runs;
+      s.balls += entry.balls;
+      s.fours += entry.fours;
+      s.sixes += entry.sixes;
+      if (entry.out) s.outs++;
+      if (entry.runs >= 50 && entry.runs < 100) s.fifties++;
+      if (entry.runs >= 100) s.hundreds++;
+      if (entry.runs > s.HS) s.HS = entry.runs;
+    } else {
+      s.wkts += entry.wickets;
+      s.runsConceded += entry.runs;
+      s.ballsBowled += entry.balls;
+      if (entry.wickets > s.bestW || (entry.wickets === s.bestW && entry.runs < s.bestR)) {
+        s.bestW = entry.wickets;
+        s.bestR = entry.runs;
       }
     }
+    playerStats[pKey] = s;
   }
 
+  return { teamStats, playerStats };
+}
+
+export function recalcAll(matchResults, userName) {
+  let teamStats = {};
+  let playerStats = {};
+  TEAMS.forEach(t => teamStats[t.id] = blankTeamStat());
+
+  for (const m of matchResults) {
+    const res = accumulateMatchStats(teamStats, playerStats, m, userName);
+    teamStats = res.teamStats;
+    playerStats = res.playerStats;
+  }
   return { teamStats, playerStats };
 }
