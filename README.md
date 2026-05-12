@@ -9,6 +9,7 @@ Built with **React 19 + Vite 8 + Tailwind v4**.
 ## Features
 
 ### Advanced Career Engine
+- **Cloud Persistence & Authentication:** Secure Google Login via Firebase ensures your game state and career history are saved to the cloud and synced across devices.
 - **Persistent Legacy Tracking:** Every season you complete is permanently saved to your career history.
 - **10-Card Master Dashboards:** View your active season and all-time career metrics including Batting Average, Bowling Average, Strike Rate, Economy, Highest Score, Centuries, and Fifties.
 - **All-Time Rivalry Meter:** The engine permanently tracks every win and loss your team has against every other franchise, displaying an immersive Head-to-Head win-rate progress bar.
@@ -43,6 +44,7 @@ Built with **React 19 + Vite 8 + Tailwind v4**.
 src/
 ├── constants.js          Magic numbers (powerplay balls, form ranges, god mode stats…)
 ├── data.js               TEAMS, ROSTERS, lineup helpers
+├── firebase.js           Firebase configuration, Authentication, and Cloud Firestore helpers
 ├── simulation.js         Ball-by-ball innings sim, schedule generator, god mode pick
 ├── stats.js              Team & player stat aggregation, NRR
 ├── historyData.js        Seed data for legacy seasons and rivalries
@@ -111,7 +113,7 @@ npm run preview
 | Icons | lucide-react |
 | Fonts | Bebas Neue (display), IBM Plex Sans (body), IBM Plex Mono (numbers) |
 | State | Custom React Hooks (`useTournament.js`) |
-| Persistence | `localStorage` (`ipl_sim_state_v1`) |
+| Persistence | Firebase Authentication & Cloud Firestore (previously `localStorage`) |
 
 ---
 
