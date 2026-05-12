@@ -1,5 +1,7 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useTournament } from './hooks/useTournament';
+import { auth, loginWithGoogle, logoutGoogle } from './firebase';
+import { onAuthStateChanged } from 'firebase/auth';
 
 import SetupScreen from './components/SetupScreen';
 import ControlBar from './components/ControlBar';
@@ -15,10 +17,10 @@ import SeasonSummary from './components/SeasonSummary';
 import GodModeAlert from './components/GodModeAlert';
 import HistoryView from './components/HistoryView';
 
-export default function App() {
+function MainApp({ user }) {
   const {
     state: {
-      userName, tourney, schedule, results, phase, tab, playoff, playoffStep, champion,
+      userName, userTeam, tourney, schedule, results, phase, tab, playoff, playoffStep, champion,
       openMatch, pendingToss, godModeMatches, godAlerts, hydrated,
       teamStats, allPlayerStats, history, careerRivalries
     },
@@ -69,10 +71,20 @@ export default function App() {
               <div>
                 <div className="text-[10px] tracking-[0.25em] text-zinc-500">PLAYING AS</div>
                 <div className="text-lg font-bold text-amber-400">{userName}</div>
-                <div className="text-[10px] text-zinc-500">CSK • OPENER</div>
+                <div className="text-[10px] text-zinc-500">{userTeam} • OPENER</div>
               </div>
             </div>
           )}
+          {!userName && <div className="flex-1"></div>}
+          <div className="text-right flex flex-col items-end gap-1 ml-4 border-l border-zinc-800 pl-4">
+            <div className="text-[10px] tracking-widest text-zinc-500">SAVING AS</div>
+            <div className="flex items-center gap-2">
+              <img src={user.photoURL} alt="profile" className="w-6 h-6 rounded-full border border-zinc-700" />
+              <button onClick={logoutGoogle} className="text-xs text-amber-500 hover:text-amber-400 font-bold transition-colors">
+                LOGOUT
+              </button>
+            </div>
+          </div>
         </div>
       </header>
 
@@ -124,4 +136,55 @@ export default function App() {
       <GodModeAlert alerts={godAlerts} onDismiss={() => setGodAlerts([])} />
     </div>
   );
+}
+
+export default function App() {
+  const [user, setUser] = useState(null);
+  const [authLoading, setAuthLoading] = useState(true);
+
+  useEffect(() => {
+    if (auth) {
+      const unsubscribe = onAuthStateChanged(auth, (u) => {
+        setUser(u);
+        setAuthLoading(false);
+      });
+      return () => unsubscribe();
+    } else {
+      setAuthLoading(false);
+    }
+  }, []);
+
+  if (authLoading) {
+    return (
+      <div className="min-h-screen app-bg flex items-center justify-center">
+        <div className="text-amber-500 text-sm font-bold tracking-widest animate-pulse">
+          LOADING...
+        </div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <div className="min-h-screen text-zinc-100 app-bg font-sans flex flex-col items-center justify-center p-4">
+        <div className="max-w-md w-full bg-zinc-950/80 backdrop-blur border border-zinc-800 rounded-2xl p-8 text-center shadow-2xl">
+          <div className="text-[10px] tracking-[0.35em] text-amber-500 mb-2">FANTASY T20 SIMULATOR</div>
+          <h1 className="text-5xl font-black tracking-tight mb-8" style={{ fontFamily: 'Bebas Neue', letterSpacing: '0.02em' }}>
+            WELCOME
+          </h1>
+          <p className="text-zinc-400 mb-8 text-sm leading-relaxed">
+            Please sign in with your Google account to save your career stats, rivalries, and tournament history to the cloud.
+          </p>
+          <button 
+            onClick={loginWithGoogle} 
+            className="w-full bg-amber-500 hover:bg-amber-400 text-zinc-950 font-bold py-4 rounded-xl transition-all hover:scale-[1.02] active:scale-[0.98] shadow-[0_0_20px_rgba(245,158,11,0.2)]"
+          >
+            LOGIN WITH GOOGLE
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return <MainApp user={user} />;
 }

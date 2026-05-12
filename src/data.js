@@ -1,4 +1,4 @@
-import { USER_BAT_SR, USER_BAT_AVG, USER_BOWL_SR, USER_BOWL_ECON, USER_TEAM } from './constants';
+import { USER_BAT_SR, USER_BAT_AVG, USER_BOWL_SR, USER_BOWL_ECON } from './constants';
 
 export const TEAMS = [
   { id: 'CSK', name: 'Chennai Super Kings', short: 'CSK', primary: '#F9CD05', dark: '#1E4D8C' },
@@ -167,14 +167,16 @@ export function toPlayer(tup, teamId) {
   };
 }
 
-export function buildAllPlayers(userName) {
+export function buildAllPlayers(userName, userTeam) {
   const players = {};
-  players[`USER:${userName}`] = {
-    name: userName, role: 'BAT', team: USER_TEAM,
-    batSR: USER_BAT_SR, batAvg: USER_BAT_AVG,
-    bowls: true, bowlSR: USER_BOWL_SR, bowlEcon: USER_BOWL_ECON,
-    isUser: true,
-  };
+  if (userName && userTeam) {
+    players[`USER:${userName}`] = {
+      name: userName, role: 'BAT', team: userTeam,
+      batSR: USER_BAT_SR, batAvg: USER_BAT_AVG,
+      bowls: true, bowlSR: USER_BOWL_SR, bowlEcon: USER_BOWL_ECON,
+      isUser: true,
+    };
+  }
   for (const teamId of Object.keys(ROSTERS)) {
     ROSTERS[teamId].forEach(tup => {
       const p = toPlayer(tup, teamId);
@@ -184,11 +186,11 @@ export function buildAllPlayers(userName) {
   return players;
 }
 
-export function getLineup(teamId, userName, playersMap) {
-  if (teamId === USER_TEAM) {
+export function getLineup(teamId, userName, userTeam, playersMap) {
+  if (teamId === userTeam && userName) {
     const lineup = [playersMap[`USER:${userName}`]];
-    ROSTERS[USER_TEAM].forEach(tup => {
-      lineup.push(playersMap[`${USER_TEAM}:${tup[0]}`]);
+    ROSTERS[userTeam].forEach(tup => {
+      lineup.push(playersMap[`${userTeam}:${tup[0]}`]);
     });
     return lineup;
   }

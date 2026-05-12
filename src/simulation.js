@@ -245,7 +245,7 @@ function simulateInnings(batSquad, bowlSquad, formFactors, target = null) {
   };
 }
 
-export function simulateMatch(homeId, awayId, userName, playersMap, label = 'League', preTossWinner = null, preTossDecision = null, godMode = false) {
+export function simulateMatch(homeId, awayId, userName, userTeam, playersMap, label = 'League', preTossWinner = null, preTossDecision = null, godMode = false) {
   // If god mode is active, swap in a boosted user player for this match only.
   let effectivePlayersMap = playersMap;
   const userKey = `USER:${userName}`;
@@ -263,8 +263,8 @@ export function simulateMatch(homeId, awayId, userName, playersMap, label = 'Lea
     };
   }
 
-  const homeLineup = getLineup(homeId, userName, effectivePlayersMap);
-  const awayLineup = getLineup(awayId, userName, effectivePlayersMap);
+  const homeLineup = getLineup(homeId, userName, userTeam, effectivePlayersMap);
+  const awayLineup = getLineup(awayId, userName, userTeam, effectivePlayersMap);
 
   const tossWinner = preTossWinner || (Math.random() < 0.5 ? homeId : awayId);
   const tossDecision = preTossDecision || (Math.random() < TOSS_FIELD_FIRST_PROB ? 'bowl' : 'bat');

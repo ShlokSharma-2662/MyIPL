@@ -43,20 +43,23 @@ export function accumulateMatchStats(existingTeamStats, existingPlayerStats, m, 
   const t1 = { ...teamStats[t1Id] };
   const t2 = { ...teamStats[t2Id] };
   
-  t1.P++; t2.P++;
+  // Only update team standings for league matches, not playoffs
+  if (m.label === 'League') {
+    t1.P++; t2.P++;
 
-  t1.runsFor += m.inn1.totalRuns;
-  t1.ballsFor += Math.min(m.inn1.balls, 120);
-  t1.runsAgainst += m.inn2.totalRuns;
-  t1.ballsAgainst += Math.min(m.inn2.balls, 120);
+    t1.runsFor += m.inn1.totalRuns;
+    t1.ballsFor += Math.min(m.inn1.balls, 120);
+    t1.runsAgainst += m.inn2.totalRuns;
+    t1.ballsAgainst += Math.min(m.inn2.balls, 120);
 
-  t2.runsFor += m.inn2.totalRuns;
-  t2.ballsFor += Math.min(m.inn2.balls, 120);
-  t2.runsAgainst += m.inn1.totalRuns;
-  t2.ballsAgainst += Math.min(m.inn1.balls, 120);
+    t2.runsFor += m.inn2.totalRuns;
+    t2.ballsFor += Math.min(m.inn2.balls, 120);
+    t2.runsAgainst += m.inn1.totalRuns;
+    t2.ballsAgainst += Math.min(m.inn1.balls, 120);
 
-  if (m.winner === t1Id) { t1.W++; t1.Pts += 2; t2.L++; }
-  else if (m.winner === t2Id) { t2.W++; t2.Pts += 2; t1.L++; }
+    if (m.winner === t1Id) { t1.W++; t1.Pts += 2; t2.L++; }
+    else if (m.winner === t2Id) { t2.W++; t2.Pts += 2; t1.L++; }
+  }
 
   teamStats[t1Id] = t1;
   teamStats[t2Id] = t2;

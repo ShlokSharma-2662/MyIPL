@@ -1,9 +1,10 @@
 import { useState, useMemo, useEffect } from 'react';
 import { buildAllPlayers } from '../data';
-import { USER_TEAM, GOD_MODE_MIN, GOD_MODE_MAX, TOSS_FIELD_FIRST_PROB } from '../constants';
+import { GOD_MODE_MIN, GOD_MODE_MAX, TOSS_FIELD_FIRST_PROB } from '../constants';
 import { simulateMatch, generateSchedule, pickGodModeMatches } from '../simulation';
 import { recalcAll, accumulateMatchStats, computeNRR } from '../stats';
 import { LEGACY_HISTORY, LEGACY_RIVALRIES } from '../historyData';
+import { saveStateToFirebase, loadStateFromFirebase, clearFirebaseState } from '../firebase';
 
 const STORAGE_KEY = 'ipl_sim_state_v1';
 
@@ -25,7 +26,8 @@ function rollToss(homeId, awayId) {
 
 export function useTournament() {
   const [userName, setUserName] = useState(null);
-  const [tourney, setTourney] = useState('Shlok Premier League');
+  const [userTeam, setUserTeam] = useState('CSK');
+  const [tourney, setTourney] = useState('Indian Premier League');
   const [schedule, setSchedule] = useState([]);
   const [results, setResults] = useState([]);
   const [phase, setPhase] = useState('setup'); // setup | league | playoffs | done
@@ -43,100 +45,122 @@ export function useTournament() {
   // Incremental stats state
   const [teamStats, setTeamStats] = useState({});
   const [allPlayerStats, setAllPlayerStats] = useState({});
-  
+
   const [history, setHistory] = useState(LEGACY_HISTORY);
   const [careerRivalries, setCareerRivalries] = useState(LEGACY_RIVALRIES);
 
   useEffect(() => {
-    const saved = loadState();
-    if (saved && saved.phase !== 'setup' && saved.userName) {
-      setUserName(saved.userName);
-      setTourney(saved.tourney);
-      setSchedule(saved.schedule || []);
-      setResults(saved.results || []);
-      setPhase(saved.phase);
-      setPlayoff(saved.playoff || { q1: null, elim: null, q2: null, final: null });
-      setPlayoffStep(saved.playoffStep || 0);
-      setChampion(saved.champion || null);
-      setGodModeMatches(saved.godModeMatches || []);
-      setUsedPlayoffGodMode(saved.usedPlayoffGodMode || false);
-      if (saved.careerRivalries) {
-        setCareerRivalries(saved.careerRivalries);
-      }
-      
-      if (saved.history) {
-        // Retroactively patch old saved history with the new comprehensive stats
-        const patchedHistory = saved.history.map(sh => {
-          if (sh.playerStats && (sh.playerStats.M === undefined || sh.playerStats.outs === undefined)) {
-            const legacyMatch = LEGACY_HISTORY.find(lh => lh.season === sh.season);
-            if (legacyMatch) {
-              return {
-                ...sh,
-                playerStats: {
-                  ...legacyMatch.playerStats,
-                  // Keep their actual saved runs/wickets if they exist, otherwise use legacy fallback
-                  runs: sh.playerStats.runs !== undefined ? sh.playerStats.runs : legacyMatch.playerStats.runs,
-                  wickets: sh.playerStats.wickets !== undefined ? sh.playerStats.wickets : legacyMatch.playerStats.wickets,
-                  M: sh.playerStats.M !== undefined ? sh.playerStats.M : legacyMatch.playerStats.M,
-                  outs: sh.playerStats.outs !== undefined ? sh.playerStats.outs : legacyMatch.playerStats.outs,
-                }
-              };
-            } else {
-              // For dynamically generated seasons that lacked 'outs', assign a random realistic value
-              const matches = sh.playerStats.M || 14;
-              const randomOuts = Math.floor(Math.random() * (matches - 2)) + 2; 
-              return {
-                ...sh,
-                playerStats: {
-                  ...sh.playerStats,
-                  outs: sh.playerStats.outs !== undefined ? sh.playerStats.outs : randomOuts
-                }
-              };
-            }
-          }
-          return sh;
-        })
-        .filter(h => !(h.season === 8 && h.orangeCap?.name === 'Unknown'))
-        .map((h, i) => ({ ...h, season: i + 1 }));
-        
-        setHistory(patchedHistory);
-      }
+    async function init() {
+      try {
+        let saved = await loadStateFromFirebase();
+        if (!saved) {
+          saved = loadState();
+        }
 
-      // If hydrated from storage, do one full recalc (safer than saving huge stats objects)
-      const allMatches = [
-        ...(saved.results || []),
-        ...[saved.playoff?.q1, saved.playoff?.elim, saved.playoff?.q2, saved.playoff?.final].filter(Boolean),
-      ];
-      const recalculated = recalcAll(allMatches, saved.userName);
-      setTeamStats(recalculated.teamStats);
-      setAllPlayerStats(recalculated.playerStats);
-    } else {
-      // Empty init
-      const empty = recalcAll([], null);
-      setTeamStats(empty.teamStats);
-      setAllPlayerStats(empty.playerStats);
+        if (saved && saved.phase !== 'setup' && saved.userName) {
+          setUserName(saved.userName);
+          setUserTeam(saved.userTeam || 'CSK');
+          setTourney(saved.tourney);
+          setSchedule(saved.schedule || []);
+          setResults(saved.results || []);
+          setPhase(saved.phase);
+          setPlayoff(saved.playoff || { q1: null, elim: null, q2: null, final: null });
+          setPlayoffStep(saved.playoffStep || 0);
+          setChampion(saved.champion || null);
+          setGodModeMatches(saved.godModeMatches || []);
+          setUsedPlayoffGodMode(saved.usedPlayoffGodMode || false);
+          if (saved.careerRivalries) {
+            setCareerRivalries(saved.careerRivalries);
+          }
+
+          if (saved.history) {
+            // Retroactively patch old saved history with the new comprehensive stats
+            const patchedHistory = saved.history.map(sh => {
+              if (sh.playerStats && (sh.playerStats.M === undefined || sh.playerStats.outs === undefined)) {
+                const legacyMatch = LEGACY_HISTORY.find(lh => lh.season === sh.season);
+                if (legacyMatch) {
+                  return {
+                    ...sh,
+                    playerStats: {
+                      ...legacyMatch.playerStats,
+                      // Keep their actual saved runs/wickets if they exist, otherwise use legacy fallback
+                      runs: sh.playerStats.runs !== undefined ? sh.playerStats.runs : legacyMatch.playerStats.runs,
+                      wickets: sh.playerStats.wickets !== undefined ? sh.playerStats.wickets : legacyMatch.playerStats.wickets,
+                      M: sh.playerStats.M !== undefined ? sh.playerStats.M : legacyMatch.playerStats.M,
+                      outs: sh.playerStats.outs !== undefined ? sh.playerStats.outs : legacyMatch.playerStats.outs,
+                    }
+                  };
+                } else {
+                  // For dynamically generated seasons that lacked 'outs', assign a random realistic value
+                  const matches = sh.playerStats.M || 14;
+                  const randomOuts = Math.floor(Math.random() * (matches - 2)) + 2;
+                  return {
+                    ...sh,
+                    playerStats: {
+                      ...sh.playerStats,
+                      outs: sh.playerStats.outs !== undefined ? sh.playerStats.outs : randomOuts
+                    }
+                  };
+                }
+              }
+              return sh;
+            })
+              .filter(h => !(h.season === 8 && h.orangeCap?.name === 'Unknown'))
+              .map((h, i) => ({ ...h, season: i + 1 }));
+
+            setHistory(patchedHistory);
+          }
+
+          // If hydrated from storage, do one full recalc (safer than saving huge stats objects)
+          const allMatches = [
+            ...(saved.results || []),
+            ...[saved.playoff?.q1, saved.playoff?.elim, saved.playoff?.q2, saved.playoff?.final].filter(Boolean),
+          ];
+          const recalculated = recalcAll(allMatches, saved.userName);
+          setTeamStats(recalculated.teamStats);
+          setAllPlayerStats(recalculated.playerStats);
+        } else {
+          // Empty init
+          const empty = recalcAll([], null);
+          setTeamStats(empty.teamStats);
+          setAllPlayerStats(empty.playerStats);
+        }
+      } catch (e) {
+        console.error("Hydration error:", e);
+        // Fallback to empty state on error
+        const empty = recalcAll([], null);
+        setTeamStats(empty.teamStats);
+        setAllPlayerStats(empty.playerStats);
+      } finally {
+        setHydrated(true);
+      }
     }
-    setHydrated(true);
+
+    init();
   }, []);
 
   useEffect(() => {
     if (!hydrated) return;
     if (phase === 'setup') {
       localStorage.removeItem(STORAGE_KEY);
+      clearFirebaseState();
       return;
     }
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({
-        userName, tourney, schedule, results, phase, playoff, playoffStep, champion, godModeMatches, usedPlayoffGodMode, history, careerRivalries
-      }));
-    } catch {}
-  }, [hydrated, userName, tourney, schedule, results, phase, playoff, playoffStep, champion, godModeMatches, usedPlayoffGodMode, history, careerRivalries]);
+      const stateData = {
+        userName, userTeam, tourney, schedule, results, phase, playoff, playoffStep, champion, godModeMatches, usedPlayoffGodMode, history, careerRivalries
+      };
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(stateData));
+      saveStateToFirebase(stateData);
+    } catch { }
+  }, [hydrated, userName, userTeam, tourney, schedule, results, phase, playoff, playoffStep, champion, godModeMatches, usedPlayoffGodMode, history, careerRivalries]);
 
-  const playersMap = useMemo(() => userName ? buildAllPlayers(userName) : {}, [userName]);
+  const playersMap = useMemo(() => userName ? buildAllPlayers(userName, userTeam) : {}, [userName, userTeam]);
 
-  function startTournament(name, tournamentName) {
+  function startTournament(name, tournamentName, teamId) {
     const sched = generateSchedule();
     setUserName(name);
+    setUserTeam(teamId);
     setTourney(tournamentName);
     setSchedule(sched);
     setResults([]);
@@ -145,10 +169,10 @@ export function useTournament() {
     setPlayoffStep(0);
     setChampion(null);
     setPendingToss(null);
-    setGodModeMatches(pickGodModeMatches(sched, USER_TEAM, GOD_MODE_MIN, GOD_MODE_MAX));
+    setGodModeMatches(pickGodModeMatches(sched, teamId, GOD_MODE_MIN, GOD_MODE_MAX));
     setGodAlerts([]);
     setUsedPlayoffGodMode(false);
-    
+
     const empty = recalcAll([], name);
     setTeamStats(empty.teamStats);
     setAllPlayerStats(empty.playerStats);
@@ -160,7 +184,7 @@ export function useTournament() {
       const currentSeason = history.length + 1;
       const orangeCapPlayer = Object.values(allPlayerStats).sort((a, b) => b.runs - a.runs)[0];
       const purpleCapPlayer = Object.values(allPlayerStats).sort((a, b) => b.wkts - a.wkts)[0];
-      
+
       const userKey = `USER:${userName}`;
       const userStats = allPlayerStats[userKey] || { runs: 0, balls: 0, wkts: 0, runsConceded: 0, ballsBowled: 0, outs: 0 };
       const overs = userStats.ballsBowled / 6;
@@ -172,15 +196,15 @@ export function useTournament() {
         champion,
         orangeCap: { name: orangeCapPlayer?.player?.name || 'Unknown', runs: orangeCapPlayer?.runs || 0 },
         purpleCap: { name: purpleCapPlayer?.player?.name || 'Unknown', wickets: purpleCapPlayer?.wkts || 0 },
-        playerStats: { 
+        playerStats: {
           M: userStats.M || 0,
-          runs: userStats.runs || 0, 
+          runs: userStats.runs || 0,
           balls: userStats.balls || 0,
           fifties: userStats.fifties || 0,
           hundreds: userStats.hundreds || 0,
           hs: userStats.HS || 0,
           outs: userStats.outs || 0,
-          wickets: userStats.wkts || 0, 
+          wickets: userStats.wkts || 0,
           runsConceded: userStats.runsConceded || 0,
           ballsBowled: userStats.ballsBowled || 0
         }
@@ -195,10 +219,10 @@ export function useTournament() {
         ...[playoff.q1, playoff.elim, playoff.q2, playoff.final].filter(Boolean)
       ];
       allSeasonMatches.forEach(m => {
-        if (m.home === USER_TEAM || m.away === USER_TEAM) {
-          const isHome = m.home === USER_TEAM;
+        if (m.home === userTeam || m.away === userTeam) {
+          const isHome = m.home === userTeam;
           const opp = isHome ? m.away : m.home;
-          const won = m.winner === USER_TEAM;
+          const won = m.winner === userTeam;
           if (!nextRivalries[opp]) nextRivalries[opp] = { wins: 0, losses: 0 };
           if (won) nextRivalries[opp].wins += 1;
           else nextRivalries[opp].losses += 1;
@@ -207,11 +231,15 @@ export function useTournament() {
       setCareerRivalries(nextRivalries);
 
       // Preserve history and rivalries when clearing storage for a new season
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({ history: nextHistory, careerRivalries: nextRivalries }));
+      const data = { history: nextHistory, careerRivalries: nextRivalries };
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+      saveStateToFirebase(data);
     } else {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({ history, careerRivalries }));
+      const data = { history, careerRivalries };
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+      saveStateToFirebase(data);
     }
-    
+
     setUserName(null);
     setSchedule([]);
     setResults([]);
@@ -229,8 +257,8 @@ export function useTournament() {
   }
 
   function opponentOf(match) {
-    if (match.home === USER_TEAM) return match.away;
-    if (match.away === USER_TEAM) return match.home;
+    if (match.home === userTeam) return match.away;
+    if (match.away === userTeam) return match.home;
     return null;
   }
 
@@ -259,9 +287,9 @@ export function useTournament() {
       const idx = startIdx + i;
       const next = schedule[idx];
       const godMode = godModeMatches.includes(idx);
-      const match = simulateMatch(next.home, next.away, userName, playersMap, 'League', null, null, godMode);
+      const match = simulateMatch(next.home, next.away, userName, userTeam, playersMap, 'League', null, null, godMode);
       batch.push(match);
-      
+
       const acc = accumulateMatchStats(currentTeamStats, currentPlayerStats, match, userName);
       currentTeamStats = acc.teamStats;
       currentPlayerStats = acc.playerStats;
@@ -270,7 +298,7 @@ export function useTournament() {
         alerts.push({ matchNum: idx + 1, opp: opponentOf(next) });
       }
     }
-    
+
     setTeamStats(currentTeamStats);
     setAllPlayerStats(currentPlayerStats);
     return { batch, alerts };
@@ -281,15 +309,15 @@ export function useTournament() {
     const idx = results.length;
     const next = schedule[idx];
     const { tossWinner, tossDecision } = rollToss(next.home, next.away);
-    const cskPlaying = next.home === USER_TEAM || next.away === USER_TEAM;
+    const isUserPlaying = next.home === userTeam || next.away === userTeam;
     const godMode = godModeMatches.includes(idx);
 
-    if (cskPlaying && tossWinner === USER_TEAM) {
+    if (isUserPlaying && tossWinner === userTeam) {
       setPendingToss({ home: next.home, away: next.away, tossWinner, label: 'League', type: 'league', godMode });
       return;
     }
 
-    const match = simulateMatch(next.home, next.away, userName, playersMap, 'League', tossWinner, tossDecision, godMode);
+    const match = simulateMatch(next.home, next.away, userName, userTeam, playersMap, 'League', tossWinner, tossDecision, godMode);
     commitLeagueMatch(match);
     if (godMode) {
       setGodAlerts(a => [...a, { matchNum: idx + 1, opp: opponentOf(next) }]);
@@ -360,22 +388,22 @@ export function useTournament() {
     }
 
     const { tossWinner, tossDecision } = rollToss(home, away);
-    const cskPlaying = home === USER_TEAM || away === USER_TEAM;
+    const isUserPlaying = home === userTeam || away === userTeam;
 
     let isGodMode = false;
-    if (cskPlaying && !usedPlayoffGodMode) {
+    if (isUserPlaying && !usedPlayoffGodMode) {
       if (playoffStep === 3 || Math.random() < 0.5) {
         isGodMode = true;
         setUsedPlayoffGodMode(true);
       }
     }
 
-    if (cskPlaying && tossWinner === USER_TEAM) {
+    if (isUserPlaying && tossWinner === userTeam) {
       setPendingToss({ home, away, tossWinner, label, type: 'playoff', step: playoffStep, godMode: isGodMode });
       return;
     }
 
-    const match = simulateMatch(home, away, userName, playersMap, label, tossWinner, tossDecision, isGodMode);
+    const match = simulateMatch(home, away, userName, userTeam, playersMap, label, tossWinner, tossDecision, isGodMode);
     applyPlayoffMatch(match, playoffStep);
     if (isGodMode) {
       setGodAlerts(a => [...a, { matchNum: label, opp: opponentOf({ home, away }) }]);
@@ -385,7 +413,7 @@ export function useTournament() {
   function completeToss(decision) {
     if (!pendingToss) return;
     const { home, away, tossWinner, label, type, step, godMode } = pendingToss;
-    const match = simulateMatch(home, away, userName, playersMap, label, tossWinner, decision, !!godMode);
+    const match = simulateMatch(home, away, userName, userTeam, playersMap, label, tossWinner, decision, !!godMode);
     setPendingToss(null);
 
     if (type === 'league') {
@@ -404,7 +432,7 @@ export function useTournament() {
 
   return {
     state: {
-      userName, tourney, schedule, results, phase, tab, playoff, playoffStep, champion,
+      userName, userTeam, tourney, schedule, results, phase, tab, playoff, playoffStep, champion,
       openMatch, pendingToss, godModeMatches, godAlerts, hydrated,
       teamStats, allPlayerStats, history, careerRivalries, usedPlayoffGodMode
     },

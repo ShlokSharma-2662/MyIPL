@@ -1,9 +1,11 @@
 import React, { useState } from 'react';
 import { USER_BAT_SR, USER_BOWL_SR, USER_BOWL_ECON } from '../constants';
+import { TEAMS } from '../data';
 
 export default function SetupScreen({ onStart }) {
   const [name, setName] = useState('Shlok');
-  const [tourney, setTourney] = useState('Shlok Premier League');
+  const [tourney, setTourney] = useState('Indian Premier League');
+  const [team, setTeam] = useState('CSK');
 
   return (
     <div className="min-h-[75vh] flex items-center justify-center px-4 animate-fade-in relative">
@@ -18,7 +20,7 @@ export default function SetupScreen({ onStart }) {
           BUILD YOUR LEGEND.
         </h1>
         <p className="text-zinc-400 text-sm mb-8 leading-relaxed">
-          You'll open the innings for CSK with elite stats — strike rate {USER_BAT_SR}, bowl SR {USER_BOWL_SR}, economy {USER_BOWL_ECON}. Other players have form swings each match.
+          You'll open the innings for your team with elite stats — strike rate {USER_BAT_SR}, bowl SR {USER_BOWL_SR}, economy {USER_BOWL_ECON}. Other players have form swings each match.
         </p>
 
         <label className="block mb-5 group">
@@ -28,6 +30,19 @@ export default function SetupScreen({ onStart }) {
             onChange={e => setName(e.target.value)}
             className="w-full bg-black/40 border border-zinc-800 rounded-lg px-4 py-3 text-zinc-100 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500/50 font-mono transition-all shadow-inner"
           />
+        </label>
+
+        <label className="block mb-5 group">
+          <span className="text-xs tracking-wider text-zinc-400 block mb-2 group-focus-within:text-amber-400 transition-colors">YOUR TEAM</span>
+          <select
+            value={team}
+            onChange={e => setTeam(e.target.value)}
+            className="w-full bg-black/40 border border-zinc-800 rounded-lg px-4 py-3 text-zinc-100 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500/50 font-mono transition-all shadow-inner appearance-none"
+          >
+            {TEAMS.map(t => (
+              <option key={t.id} value={t.id} className="bg-zinc-900 text-zinc-100">{t.name} ({t.id})</option>
+            ))}
+          </select>
         </label>
 
         <label className="block mb-8 group">
@@ -40,7 +55,7 @@ export default function SetupScreen({ onStart }) {
         </label>
 
         <button
-          onClick={() => onStart(name.trim() || 'You', tourney.trim() || 'Fantasy IPL')}
+          onClick={() => onStart(name.trim() || 'You', tourney.trim() || 'Fantasy IPL', team)}
           className="w-full bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 transition-all duration-300 text-black font-bold py-4 rounded-lg tracking-widest text-sm shadow-[0_0_20px_rgba(245,158,11,0.3)] hover:shadow-[0_0_30px_rgba(245,158,11,0.5)] hover:-translate-y-0.5"
         >
           START SEASON →
@@ -49,7 +64,7 @@ export default function SetupScreen({ onStart }) {
         <div className="mt-8 pt-6 border-t border-zinc-800/50 text-xs text-zinc-500 space-y-2 font-medium">
           <div className="flex items-center gap-2"><div className="w-1 h-1 rounded-full bg-zinc-600" /> 10 teams • 70 league matches • 14 per side</div>
           <div className="flex items-center gap-2"><div className="w-1 h-1 rounded-full bg-zinc-600" /> Top 4 → Qualifier 1, Eliminator, Qualifier 2, Final</div>
-          <div className="flex items-center gap-2"><div className="w-1 h-1 rounded-full bg-zinc-600" /> Call the toss when CSK wins it • progress auto-saves</div>
+          <div className="flex items-center gap-2"><div className="w-1 h-1 rounded-full bg-zinc-600" /> Call the toss when your team wins it • progress auto-saves</div>
         </div>
       </div>
     </div>
