@@ -500,7 +500,7 @@ export default function LiveMatchViewer({ match, userTeam = 'CSK', onComplete })
             <span className="text-[10px] font-mono text-zinc-500">{currentIdx + 1} / {allEvents.length} deliveries</span>
           </div>
 
-          <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4 no-scrollbar">
+          <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4 custom-scrollbar">
             {allEvents.slice(0, currentIdx + 1).map((e, idx) => {
               const isSix = e.runs === 6;
               const isFour = e.runs === 4;

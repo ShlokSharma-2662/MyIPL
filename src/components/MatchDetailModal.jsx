@@ -60,7 +60,7 @@ export default function MatchDetailModal({ match, onClose }) {
   );
 
   const CommentaryPanel = ({ innEvents = [] }) => (
-    <div className="space-y-3.5 max-h-[480px] overflow-y-auto pr-2 no-scrollbar">
+    <div className="space-y-3.5 max-h-[480px] overflow-y-auto pr-2 custom-scrollbar">
       {innEvents.length === 0 ? (
         <div className="text-center py-8 text-zinc-500 text-xs">No commentary available for this innings.</div>
       ) : (
