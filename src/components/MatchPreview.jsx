@@ -1,21 +1,32 @@
 import React, { useState, useMemo } from 'react';
 import { Target, Shield, Award, Zap, Play, FastForward, Info, Users } from 'lucide-react';
 import TeamBadge from './TeamBadge';
-import { TEAMS, ROSTERS } from '../data';
+import { TEAMS, buildAllPlayers } from '../data';
 import { USER_TEAM } from '../constants';
+import { getStarPlayerForTeam, calculatePlayerRating } from '../simulation';
 
-const starBowlers = {
-  MI: 'Jasprit Bumrah',
-  RCB: 'Mohammed Siraj',
-  KKR: 'Varun Chakaravarthy',
-  SRH: 'Pat Cummins',
-  DC: 'Kuldeep Yadav',
-  RR: 'Yuzvendra Chahal',
-  PBKS: 'Arshdeep Singh',
-  GT: 'Rashid Khan',
-  LSG: 'Ravi Bishnoi',
-  CSK: 'Matheesha Pathirana'
-};
+function getStarPlayerTrait(player) {
+  if (!player) return { name: 'None', description: '' };
+  if (player.role === 'BOWL') {
+    return {
+      id: 'deathlock',
+      name: 'Deathlock Bowler',
+      description: 'Reduces opponent batting boundary rate by 30% in death overs (overs 16–20).'
+    };
+  } else if (player.role === 'AR') {
+    return {
+      id: 'clutch',
+      name: 'Clutch Player',
+      description: 'Gains +15% batting boundaries and -15% bowling economy rate in high-pressure situations.'
+    };
+  } else {
+    return {
+      id: 'chase',
+      name: 'Chase Master',
+      description: 'Grants +20% batting average and -30% dismissal risk when chasing a target.'
+    };
+  }
+}
 
 export default function MatchPreview({ homeId, awayId, userName, teamStats, playerStats, results = [], careerRivalries = {}, onSimulate, onWatch, onClose }) {
   const home = TEAMS.find(t => t.id === homeId);
@@ -28,8 +39,24 @@ export default function MatchPreview({ homeId, awayId, userName, teamStats, play
   const [bowlingFocus, setBowlingFocus] = useState('balanced'); // pace | balanced | spin
   const [selectedImpact, setSelectedImpact] = useState('Default');
 
-  // Roster options for Impact Player
-  const cskRoster = ROSTERS.CSK.map(r => r[0]);
+  // Dynamic Star Players evaluation using local playersMap
+  const playersMap = useMemo(() => buildAllPlayers(userName, USER_TEAM), [userName]);
+  const homeStar = useMemo(() => getStarPlayerForTeam(homeId, userName, USER_TEAM, playersMap), [homeId, userName, playersMap]);
+  const awayStar = useMemo(() => getStarPlayerForTeam(awayId, userName, USER_TEAM, playersMap), [awayId, userName, playersMap]);
+
+  const cskStar = homeId === USER_TEAM ? homeStar : awayStar;
+  const oppStar = homeId === USER_TEAM ? awayStar : homeStar;
+
+  // Strategic Toggles
+  const [playDefensivelyAgainstStar, setPlayDefensivelyAgainstStar] = useState(false);
+  const [targetOpponentStar, setTargetOpponentStar] = useState(false);
+
+  // Roster options for CSK Impact Player
+  const cskRoster = useMemo(() => {
+    return Object.values(playersMap)
+      .filter(p => p.team === USER_TEAM && !p.isUser)
+      .map(p => p.name);
+  }, [playersMap]);
 
   // Form guides (last 5 games)
   const getForm = (teamId) => {
@@ -66,17 +93,13 @@ export default function MatchPreview({ homeId, awayId, userName, teamStats, play
     return Math.max(25, Math.min(75, Math.round(base)));
   }, [homeId, awayId, teamStats, careerRivalries, opponentId]);
 
-  // Player Battle Setup
-  const userKey = `USER:${userName}`;
-  const me = playerStats[userKey] || { runs: 0, M: 0, outs: 0, HS: 0 };
-  const userAvg = me.outs > 0 ? (me.runs / me.outs).toFixed(1) : me.runs.toFixed(1);
-  const oppStarBowlerName = starBowlers[opponentId] || 'Star Bowler';
-
   const handleStart = (mode) => {
     const tactics = {
       intent,
       bowlingFocus,
-      nominatedImpact: selectedImpact === 'Default' ? null : selectedImpact
+      nominatedImpact: selectedImpact === 'Default' ? null : selectedImpact,
+      playDefensivelyAgainstStar,
+      targetOpponentStar
     };
     if (mode === 'watch') {
       onWatch(tactics);
@@ -147,41 +170,124 @@ export default function MatchPreview({ homeId, awayId, userName, teamStats, play
           </div>
         </div>
 
-        {/* Player Battle Panel */}
-        <div className="p-6 border-b border-zinc-800 bg-zinc-950/20 grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="bg-black/30 rounded-xl p-4 border border-zinc-800 flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-amber-500/10 flex items-center justify-center border border-amber-500/30 text-amber-400 font-bold">
-              {userName.slice(0, 2).toUpperCase()}
-            </div>
-            <div>
-              <div className="text-[9px] tracking-widest text-amber-500 font-bold uppercase">CSK KEY BATTER</div>
-              <div className="font-bold text-zinc-100">{userName}</div>
-              <div className="text-xs text-zinc-400 font-mono mt-0.5">Career Avg: {userAvg} · HS: {me.HS || '-'}</div>
-            </div>
+        {/* Dynamic Star Spotlight Duel Panel */}
+        <div className="p-6 border-b border-zinc-800 bg-zinc-950/20">
+          <div className="text-[10px] tracking-[0.35em] text-amber-500 font-black mb-4 flex items-center gap-1.5 justify-center">
+            <Zap className="w-4 h-4 text-amber-400 animate-pulse" /> DYNAMIC STAR SPOTLIGHT DUEL
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* CSK Star Card */}
+            {cskStar && (
+              <div className="glass-panel rounded-xl p-4 border border-zinc-800/80 relative overflow-hidden group hover:border-amber-500/50 transition-all duration-300">
+                <div className="absolute top-0 inset-x-0 h-0.5 bg-amber-500 shadow-[0_0_10px_#f59e0b]" />
+                <div className="flex items-start justify-between">
+                  <div>
+                    <span className="text-[8px] font-black tracking-widest text-amber-500 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20 uppercase">
+                      CSK {cskStar.role} ICON
+                    </span>
+                    <h4 className="font-extrabold text-sm text-zinc-100 mt-1">{cskStar.name}</h4>
+                    <div className="text-[10px] text-zinc-400 font-mono mt-1">
+                      Rating: <strong className="text-amber-400">{calculatePlayerRating(cskStar).toFixed(0)}</strong> · Avg: {cskStar.batAvg} · SR: {cskStar.batSR}
+                    </div>
+                    <div className="text-[10px] text-zinc-500 font-mono mt-0.5">
+                      Ability: <strong className="text-zinc-300">{getStarPlayerTrait(cskStar).name}</strong>
+                      <p className="text-[9px] text-zinc-400 font-sans italic mt-1 leading-normal">
+                        "{getStarPlayerTrait(cskStar).description}"
+                      </p>
+                    </div>
+                  </div>
+                  <div className="w-10 h-10 shrink-0 rounded-full bg-amber-500/10 border border-amber-500/30 flex items-center justify-center font-bold text-amber-400 text-xs shadow-[0_0_15px_rgba(245,158,11,0.15)] group-hover:scale-105 transition-transform duration-300">
+                    {cskStar.name.split(' ').map(n=>n[0]).join('')}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Opponent Star Card */}
+            {oppStar && (
+              <div className="glass-panel rounded-xl p-4 border border-zinc-800/80 relative overflow-hidden group hover:border-fuchsia-500/50 transition-all duration-300">
+                <div className="absolute top-0 inset-x-0 h-0.5 bg-fuchsia-500 shadow-[0_0_10px_#d946ef]" />
+                <div className="flex items-start justify-between">
+                  <div>
+                    <span className="text-[8px] font-black tracking-widest text-fuchsia-400 bg-fuchsia-500/10 px-2 py-0.5 rounded border border-fuchsia-500/20 uppercase">
+                      {opponent.short} {oppStar.role} ICON
+                    </span>
+                    <h4 className="font-extrabold text-sm text-zinc-100 mt-1">{oppStar.name}</h4>
+                    <div className="text-[10px] text-zinc-400 font-mono mt-1">
+                      Rating: <strong className="text-fuchsia-400">{calculatePlayerRating(oppStar).toFixed(0)}</strong> · Avg: {oppStar.batAvg} · SR: {oppStar.batSR}
+                    </div>
+                    <div className="text-[10px] text-zinc-500 font-mono mt-0.5">
+                      Ability: <strong className="text-zinc-300">{getStarPlayerTrait(oppStar).name}</strong>
+                      <p className="text-[9px] text-zinc-400 font-sans italic mt-1 leading-normal">
+                        "{getStarPlayerTrait(oppStar).description}"
+                      </p>
+                    </div>
+                  </div>
+                  <div className="w-10 h-10 shrink-0 rounded-full bg-fuchsia-500/10 border border-fuchsia-500/30 flex items-center justify-center font-bold text-fuchsia-400 text-xs shadow-[0_0_15px_rgba(217,70,239,0.15)] group-hover:scale-105 transition-transform duration-300">
+                    {oppStar.name.split(' ').map(n=>n[0]).join('')}
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
-          <div className="bg-black/30 rounded-xl p-4 border border-zinc-800 flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-fuchsia-500/10 flex items-center justify-center border border-fuchsia-500/30 text-fuchsia-400 font-bold">
-              {oppStarBowlerName.split(' ').map(n=>n[0]).join('')}
+          {/* Strategic Focusing Toggles */}
+          {oppStar && (
+            <div className="mt-4 bg-black/40 border border-zinc-800/80 rounded-xl p-4 space-y-3">
+              <div className="text-[10px] font-black text-zinc-450 uppercase tracking-widest">
+                🎯 CRITICAL MATCH STRATEGY
+              </div>
+              <div className="flex flex-col sm:flex-row gap-3">
+                {/* Toggle 1: Play Defensively against Opponent Star Bowler */}
+                {oppStar.role === 'BOWL' && (
+                  <label className="flex items-center gap-2.5 cursor-pointer bg-zinc-950/60 hover:bg-zinc-900 border border-zinc-800/80 rounded-lg p-2.5 flex-1 transition-all select-none">
+                    <input
+                      type="checkbox"
+                      checked={playDefensivelyAgainstStar}
+                      onChange={e => setPlayDefensivelyAgainstStar(e.target.checked)}
+                      className="accent-amber-500 w-4 h-4 cursor-pointer"
+                    />
+                    <div className="text-[11px] text-zinc-300">
+                      <span className="font-bold text-amber-400">Play Defensively</span> against {oppStar.name}
+                      <div className="text-[9px] text-zinc-500 font-mono leading-tight mt-0.5">
+                        (-40% Wicket risk / -30% Strike Rate)
+                      </div>
+                    </div>
+                  </label>
+                )}
+
+                {/* Toggle 2: Target Opponent Star Batter */}
+                {(oppStar.role === 'BAT' || oppStar.role === 'WK' || oppStar.role === 'AR') && (
+                  <label className="flex items-center gap-2.5 cursor-pointer bg-zinc-950/60 hover:bg-zinc-900 border border-zinc-800/80 rounded-lg p-2.5 flex-1 transition-all select-none">
+                    <input
+                      type="checkbox"
+                      checked={targetOpponentStar}
+                      onChange={e => setTargetOpponentStar(e.target.checked)}
+                      className="accent-fuchsia-500 w-4 h-4 cursor-pointer"
+                    />
+                    <div className="text-[11px] text-zinc-300">
+                      <span className="font-bold text-fuchsia-400">Target aggressively</span> {oppStar.name}
+                      <div className="text-[9px] text-zinc-500 font-mono leading-tight mt-0.5">
+                        (+25% Wicket probability / +15% Runs allowed)
+                      </div>
+                    </div>
+                  </label>
+                )}
+              </div>
             </div>
-            <div>
-              <div className="text-[9px] tracking-widest text-fuchsia-400 font-bold uppercase">{opponent.short} KEY BOWLER</div>
-              <div className="font-bold text-zinc-100">{oppStarBowlerName}</div>
-              <div className="text-xs text-zinc-400 font-mono mt-0.5">Danger Rating: ★★★★★ (Elite)</div>
-            </div>
-          </div>
+          )}
         </div>
 
         {/* Tactical Config Options */}
         <div className="p-6 space-y-6">
-          <h3 className="text-xs tracking-[0.25em] text-zinc-500 font-black flex items-center gap-1.5">
+          <h3 className="text-xs tracking-[0.25em] text-zinc-550 font-black flex items-center gap-1.5">
             <Shield className="w-4 h-4 text-amber-500" /> CAPTAIN'S TACTICAL DIRECTIVE
           </h3>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             {/* Intent Option */}
             <div className="space-y-2">
-              <label className="text-xs font-bold text-zinc-400 block tracking-wide">BATTING INTENT</label>
+              <label className="text-xs font-bold text-zinc-450 block tracking-wide">BATTING INTENT</label>
               <select
                 value={intent}
                 onChange={e => setIntent(e.target.value)}
@@ -195,7 +301,7 @@ export default function MatchPreview({ homeId, awayId, userName, teamStats, play
 
             {/* Bowling Focus Option */}
             <div className="space-y-2">
-              <label className="text-xs font-bold text-zinc-400 block tracking-wide">BOWLING FOCUS</label>
+              <label className="text-xs font-bold text-zinc-450 block tracking-wide">BOWLING FOCUS</label>
               <select
                 value={bowlingFocus}
                 onChange={e => setBowlingFocus(e.target.value)}
@@ -209,7 +315,7 @@ export default function MatchPreview({ homeId, awayId, userName, teamStats, play
 
             {/* Nominated Impact Player Option */}
             <div className="space-y-2">
-              <label className="text-xs font-bold text-zinc-400 block tracking-wide">NOMINATE IMPACT SUB</label>
+              <label className="text-xs font-bold text-zinc-450 block tracking-wide">NOMINATE IMPACT SUB</label>
               <select
                 value={selectedImpact}
                 onChange={e => setSelectedImpact(e.target.value)}

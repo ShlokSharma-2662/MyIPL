@@ -85,6 +85,10 @@ export default function HistoryView({ userName, history = [], careerRivalries = 
   const careerBatAvg = careerOuts > 0 ? (careerRuns / careerOuts).toFixed(1) : (careerRuns > 0 ? careerRuns.toFixed(1) : '-');
   const careerBowlAvg = careerWickets > 0 ? (careerRunsConceded / careerWickets).toFixed(1) : '-';
 
+  const careerBatAvgNum = parseFloat(careerBatAvg) || 0;
+  const careerSRNum = parseFloat(careerSR) || 0;
+  const userCareerRating = careerBatAvgNum * (careerSRNum / 100);
+
   return (
     <div className="space-y-6 animate-fade-in">
       {/* Career Overview Banner */}
@@ -301,6 +305,54 @@ export default function HistoryView({ userName, history = [], careerRivalries = 
               </div>
             </div>
           )}
+
+          {/* Rise of the Franchise Icon Progression Panel */}
+          <div className="glass-panel rounded-2xl p-6 border border-zinc-800/50 relative overflow-hidden bg-gradient-to-br from-zinc-950 via-zinc-950 to-amber-950/20">
+            <div className="absolute top-0 right-0 w-32 h-32 bg-amber-500/5 blur-[40px] rounded-full pointer-events-none" />
+            <h3 className="text-sm tracking-[0.3em] text-zinc-400 mb-6 font-black uppercase flex items-center gap-2">
+              <Star className="w-4 h-4 text-amber-500 animate-spin" /> Path to Franchise Icon Status
+            </h3>
+
+            <div className="flex flex-col md:flex-row items-center gap-6">
+              {/* Badge Icon */}
+              <div className={`w-20 h-20 rounded-full flex items-center justify-center shrink-0 border-2 transition-all duration-500 shadow-2xl relative ${userCareerRating >= 62.2 ? 'border-amber-400 text-amber-400 bg-amber-500/10 animate-pulse' : 'border-zinc-800 text-zinc-650 bg-black/40'}`}>
+                <Crown className={`w-10 h-10 ${userCareerRating >= 62.2 ? 'drop-shadow-[0_0_15px_rgba(251,191,36,0.6)]' : ''}`} />
+                <div className="absolute -bottom-2 bg-zinc-900 border border-zinc-800 px-2.5 py-0.5 rounded text-[8px] font-black tracking-widest text-zinc-300 font-mono">
+                  {userCareerRating >= 62.2 ? 'ACTIVE ICON' : 'CONTENDER'}
+                </div>
+              </div>
+
+              {/* Progress and Stats */}
+              <div className="flex-1 w-full space-y-3">
+                <div className="flex justify-between items-end">
+                  <div>
+                    <h4 className="font-extrabold text-base text-zinc-100 flex items-center gap-2">
+                      {userCareerRating >= 62.2 ? '🎉 You are a Franchise Icon!' : 'Chasing Gaikwad & Dhoni'}
+                    </h4>
+                    <p className="text-xs text-zinc-450 leading-normal mt-0.5">
+                      {userCareerRating >= 62.2 
+                        ? `Congratulations! Your legendary career rating of ${userCareerRating.toFixed(1)} makes you the dynamic #1 superstar player for CSK.`
+                        : `Increase your career batting average and strike rate to surpass Ruturaj Gaikwad's benchmark rating of 62.2.`
+                      }
+                    </p>
+                  </div>
+                  <div className="text-right font-mono shrink-0">
+                    <span className="text-xl font-black text-amber-400">{Math.min(100, Math.round((userCareerRating / 62.2) * 100)) || 0}%</span>
+                    <span className="text-[9px] text-zinc-500 block tracking-wider uppercase font-bold">Hype Progress</span>
+                  </div>
+                </div>
+
+                <div className="w-full bg-zinc-900 h-2.5 rounded-full overflow-hidden border border-zinc-800 flex shadow-inner">
+                  <div className="bg-gradient-to-r from-amber-500 to-amber-400 h-full transition-all duration-1000" style={{ width: `${Math.min(100, Math.round((userCareerRating / 62.2) * 100)) || 0}%` }} />
+                </div>
+
+                <div className="flex justify-between items-center text-[9px] text-zinc-500 font-mono">
+                  <span>Your Career Rating: <strong className="text-zinc-350">{userCareerRating.toFixed(1)}</strong></span>
+                  <span>CSK Icon Benchmark: <strong className="text-zinc-350">62.2</strong></span>
+                </div>
+              </div>
+            </div>
+          </div>
 
           {/* All-Time Rivalry Meter */}
           <div className="glass-panel rounded-2xl p-6 border border-zinc-800/50">

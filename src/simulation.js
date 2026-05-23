@@ -21,6 +21,46 @@ export function shuffle(arr) {
   return a;
 }
 
+// Dynamic Star Rating Calculator
+export function calculatePlayerRating(player) {
+  if (!player) return 0;
+  
+  // Calculate Batting Rating: Average * (Strike Rate / 100)
+  const batRating = player.batAvg * (player.batSR / 100);
+  
+  // Calculate Bowling Rating: (100 / Strike Rate) * (10 / Economy) * 10
+  let bowlRating = 0;
+  if (player.bowls && player.bowlSR > 0 && player.bowlEcon > 0) {
+    bowlRating = (100 / player.bowlSR) * (10 / player.bowlEcon) * 10;
+  }
+  
+  if (player.role === 'BAT' || player.role === 'WK') {
+    return batRating;
+  } else if (player.role === 'BOWL') {
+    return bowlRating;
+  } else {
+    // All-rounder: combine both but prioritize their stronger suit
+    return Math.max(batRating, bowlRating) + Math.min(batRating, bowlRating) * 0.5;
+  }
+}
+
+// Find designated Star Player for a team
+export function getStarPlayerForTeam(teamId, userName, userTeam, playersMap) {
+  const lineup = getLineup(teamId, userName, userTeam, playersMap);
+  let starPlayer = null;
+  let maxRating = -1;
+  
+  for (const p of lineup) {
+    if (!p) continue;
+    const rating = calculatePlayerRating(p);
+    if (rating > maxRating) {
+      maxRating = rating;
+      starPlayer = p;
+    }
+  }
+  return starPlayer;
+}
+
 // Generate per-match form factors per player.
 // User player is always at peak (1.0) — others get random form between FORM_MIN..FORM_MAX.
 function generateFormFactors(...lineups) {
@@ -113,6 +153,29 @@ function generateCommentary(strikerName, bowlerName, runScored, isWicket, wicket
 function simulateInnings(batSquad, bowlSquad, formFactors, target = null, tactics = {}) {
   let totalRuns = 0, wickets = 0, balls = 0, extras = 0;
   const events = [];
+
+  // Identify Star Players dynamically for this innings
+  let batStarPlayer = null;
+  let batStarMaxRating = -1;
+  for (const p of batSquad) {
+    if (!p) continue;
+    const rating = calculatePlayerRating(p);
+    if (rating > batStarMaxRating) {
+      batStarMaxRating = rating;
+      batStarPlayer = p;
+    }
+  }
+
+  let bowlStarPlayer = null;
+  let bowlStarMaxRating = -1;
+  for (const p of bowlSquad) {
+    if (!p) continue;
+    const rating = calculatePlayerRating(p);
+    if (rating > bowlStarMaxRating) {
+      bowlStarMaxRating = rating;
+      bowlStarPlayer = p;
+    }
+  }
 
   const intent = tactics.intent || 'balanced';
   const bowlingFocus = tactics.bowlingFocus || 'balanced';
@@ -242,6 +305,50 @@ function simulateInnings(batSquad, bowlSquad, formFactors, target = null, tactic
       let bowlSR = bowler.player.bowlSR / Math.max(0.1, bowlForm);
       let bowlEcon = bowler.player.bowlEcon / Math.max(0.1, bowlForm);
 
+      // Identify if striker/bowler is their team's dynamic Star Player
+      const isStrikerStar = batStarPlayer && playerKey(striker.player) === playerKey(batStarPlayer);
+      const isBowlerStar = bowlStarPlayer && playerKey(bowler.player) === playerKey(bowlStarPlayer);
+
+      // Apply dynamic batting traits
+      if (isStrikerStar) {
+        if (batStarPlayer.role === 'BAT' || batStarPlayer.role === 'WK') {
+          // Chase Master (Active only during run chases)
+          if (target !== null) {
+            batAvg *= 1.20;
+          }
+        } else if (batStarPlayer.role === 'AR') {
+          // Clutch Player (under high run rate or late chase pressure)
+          const isHighPressureBat = target !== null && (
+            ((target - totalRuns) / Math.max(1, (MAX_BALLS - balls))) * 6 > 10.0 || (MAX_BALLS - balls) <= 18
+          );
+          if (isHighPressureBat) {
+            batSR *= 1.15;
+          }
+        }
+      }
+
+      // Apply dynamic bowling traits
+      if (isBowlerStar) {
+        if (bowlStarPlayer.role === 'AR') {
+          // Clutch Bowler (defending tight scores or late game pressure)
+          const isHighPressureBowl = (balls >= 90) || (target !== null && (target - totalRuns) < 30);
+          if (isHighPressureBowl) {
+            bowlEcon *= 0.85;
+          }
+        }
+      }
+
+      // Apply pre-match strategic tactics
+      let playDefensively = false;
+      let targetWicket = false;
+
+      if (tactics.playDefensivelyAgainstStar && isBowlerStar) {
+        playDefensively = true;
+      }
+      if (tactics.targetOpponentStar && isStrikerStar) {
+        targetWicket = true;
+      }
+
       // Batting Intent scaling
       if (intent === 'aggressive') {
         batSR *= 1.25;
@@ -281,6 +388,21 @@ function simulateInnings(batSquad, bowlSquad, formFactors, target = null, tactic
       let bowlOutProb = 1 / Math.max(1, bowlSR);
       let outProb = (batOutProb + bowlOutProb) / 2;
 
+      // Apply signature traits that scale outProb
+      if (isStrikerStar && (batStarPlayer.role === 'BAT' || batStarPlayer.role === 'WK') && target !== null) {
+        outProb *= 0.70; // Chase Master: -30% dismissal risk
+      }
+
+      // Apply strategic focus modifiers
+      if (playDefensively) {
+        outProb *= 0.60;  // -40% wicket risk
+        batSR *= 0.70;    // -30% strike rate
+      }
+      if (targetWicket) {
+        outProb *= 1.25;  // +25% wicket probability
+        batSR *= 1.15;    // +15% strike rate allowed (more aggressive)
+      }
+
       if (Math.random() < outProb) {
         striker.out = true;
         wickets++;
@@ -297,6 +419,10 @@ function simulateInnings(batSquad, bowlSquad, formFactors, target = null, tactic
           wicketType,
           isExtra: false,
           scoreAtBall: `${totalRuns}/${wickets}`,
+          isStrikerStar,
+          isBowlerStar,
+          batStarName: batStarPlayer ? batStarPlayer.name : null,
+          bowlStarName: bowlStarPlayer ? bowlStarPlayer.name : null,
           commentary: generateCommentary(striker.player.name, bowler.player.name, 0, true, wicketType, false)
         });
 
@@ -310,6 +436,11 @@ function simulateInnings(batSquad, bowlSquad, formFactors, target = null, tactic
       let batRPB = batSR / 100;
       let bowlRPB = bowlEcon / 6;
       let rpb = (batRPB + bowlRPB) / 2;
+
+      // Apply Deathlock Bowler dynamic trait (BOWL star in overs 16–20 reduces boundary rate by 30%)
+      if (isBowlerStar && bowlStarPlayer.role === 'BOWL' && balls >= 90) {
+        rpb *= 0.70;
+      }
 
       let runProb = Math.random();
       let runScored = 0;
@@ -345,6 +476,10 @@ function simulateInnings(batSquad, bowlSquad, formFactors, target = null, tactic
         wicketType: null,
         isExtra: false,
         scoreAtBall: `${totalRuns}/${wickets}`,
+        isStrikerStar,
+        isBowlerStar,
+        batStarName: batStarPlayer ? batStarPlayer.name : null,
+        bowlStarName: bowlStarPlayer ? bowlStarPlayer.name : null,
         commentary: generateCommentary(striker.player.name, bowler.player.name, runScored, false, null, false)
       });
 

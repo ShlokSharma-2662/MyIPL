@@ -231,6 +231,11 @@ export default function LiveMatchViewer({ match, userTeam = 'CSK', onComplete })
   const currentEvent = allEvents[currentIdx];
   const isFinished = currentIdx >= allEvents.length - 1;
 
+  // Star involvement metadata from the current simulated ball
+  const isStrikerStar = currentEvent?.isStrikerStar;
+  const isBowlerStar = currentEvent?.isBowlerStar;
+  const isStarActive = isStrikerStar || isBowlerStar;
+
   // Innings-specific metadata
   const targetRuns = liveStats.inn1Score.runs + 1;
   const battingFirstTeam = match.battingFirst === match.home ? home : away;
@@ -248,8 +253,41 @@ export default function LiveMatchViewer({ match, userTeam = 'CSK', onComplete })
   const homeSupport = match.home === userTeam ? liveStats.crowdSupport : 100 - liveStats.crowdSupport;
   const awaySupport = match.away === userTeam ? liveStats.crowdSupport : 100 - liveStats.crowdSupport;
 
+  // Check if a dynamic star has *just* started their spell or innings on this ball
+  const strikerBalls = liveStats.batters[liveStats.activeStriker]?.balls || 0;
+  const bowlerBalls = liveStats.bowlers[liveStats.activeBowler]?.balls || 0;
+  const showStrikerStarAlert = isStrikerStar && strikerBalls === 1;
+  const showBowlerStarAlert = isBowlerStar && bowlerBalls === 1;
+
   return (
-    <div className="fixed inset-0 bg-black/90 backdrop-blur-lg z-50 flex flex-col font-sans text-zinc-100 animate-fade-in">
+    <div className="fixed inset-0 bg-black/90 backdrop-blur-lg z-50 flex flex-col font-sans text-zinc-100 animate-fade-in relative">
+      
+      {/* Dynamic Star Entrance Alert Overlay (Cinematic Flash Overlay) */}
+      {(showStrikerStarAlert || showBowlerStarAlert) && (
+        <div className="absolute inset-0 bg-black/75 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fade-in pointer-events-none">
+          <div className="bg-gradient-to-br from-amber-500/20 via-zinc-950/95 to-fuchsia-500/20 border-2 border-amber-500/50 rounded-2xl p-6 text-center shadow-[0_0_50px_rgba(245,158,11,0.4)] max-w-sm animate-scale-up pointer-events-auto relative">
+            <div className="absolute top-0 inset-x-0 h-1 bg-gradient-to-r from-amber-500 to-fuchsia-500 shadow-[0_0_15px_#f59e0b]" />
+            <Zap className="w-12 h-12 text-amber-400 mx-auto mb-3 drop-shadow-[0_0_10px_rgba(251,191,36,0.8)] animate-bounce" />
+            <span className="text-[10px] tracking-[0.4em] text-amber-400 font-black block uppercase">🌟 STAR PLAYER ACTIVE 🌟</span>
+            <h2 className="text-2xl font-black tracking-tight text-white mt-1 uppercase" style={{ fontFamily: 'Bebas Neue', letterSpacing: '0.05em' }}>
+              {showStrikerStarAlert ? liveStats.activeStriker : liveStats.activeBowler}
+            </h2>
+            <div className="mt-3 bg-amber-500/10 border border-amber-500/20 px-3 py-2 rounded-lg">
+              <span className="text-[9px] font-black text-amber-400 uppercase tracking-widest block">Signature Ability</span>
+              <span className="text-xs font-bold text-zinc-200 mt-0.5 block">
+                {showStrikerStarAlert ? 'Chase Master / Clutch Batter' : 'Deathlock Bowler / Clutch Bowler'}
+              </span>
+              <p className="text-[10px] text-zinc-400 mt-1 leading-normal font-sans italic">
+                {showStrikerStarAlert 
+                  ? 'Gains massive scoring and survival boosts under game-changing pressure!'
+                  : 'Fires high-accuracy death deliveries that lock down boundary rates!'
+                }
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Top Bar / Header */}
       <header className="border-b border-zinc-800 bg-zinc-950/80 px-6 py-4 flex items-center justify-between shadow-md">
         <div className="flex items-center gap-3">
@@ -288,7 +326,7 @@ export default function LiveMatchViewer({ match, userTeam = 'CSK', onComplete })
         <div className="lg:col-span-2 flex flex-col gap-6 overflow-y-auto pr-1">
           {/* Main Giant Score Display */}
           <div className="glass-panel rounded-2xl p-6 relative overflow-hidden flex flex-col items-center justify-center min-h-[160px] text-center border-zinc-800/80">
-            <div className="absolute top-0 inset-x-0 h-1" style={{ backgroundColor: currentInningsTeam.primary }} />
+            <div className="absolute top-0 inset-x-0 h-1 animate-pulse" style={{ backgroundColor: currentInningsTeam.primary }} />
             
             <div className="text-xs font-mono font-bold tracking-widest uppercase mb-1" style={{ color: currentInningsTeam.primary }}>
               INNINGS {liveStats.activeInnings} • {currentInningsTeam.name}
@@ -311,26 +349,28 @@ export default function LiveMatchViewer({ match, userTeam = 'CSK', onComplete })
             {/* Stadium Noise / Fan Meter Gauge */}
             <div className="w-full mt-5 bg-zinc-900/50 border border-zinc-850 rounded-xl p-4 animate-fade-in relative z-10 max-w-xl">
               <div className="flex justify-between items-center text-xs font-mono mb-2">
-                <span className="font-bold flex items-center gap-1.5" style={{ color: home.primary }}>
+                <span className="font-bold flex items-center gap-1.5 animate-fade-in" style={{ color: home.primary }}>
                   {home.short} Fans ({homeSupport}%)
                 </span>
                 
-                {/* Roar / Pressure Badges */}
-                {liveStats.crowdSupport > 75 && (
+                {/* Dynamic Star Hype Badge / Crowd Volume */}
+                {isStarActive ? (
+                  <span className="text-[9px] bg-gradient-to-r from-amber-500/20 to-fuchsia-500/20 text-amber-300 font-black border border-amber-500/40 px-2 py-0.5 rounded-full uppercase tracking-widest animate-pulse flex items-center gap-1 shadow-[0_0_10px_rgba(245,158,11,0.2)]">
+                    ⚡ SUPERSTAR HYPE
+                  </span>
+                ) : liveStats.crowdSupport > 75 ? (
                   <span className="text-[9px] bg-amber-400/20 text-amber-400 font-black border border-amber-500/30 px-2 py-0.5 rounded-full uppercase tracking-widest animate-pulse flex items-center gap-1">
                     <Flame className="w-3 h-3 fill-amber-400 text-amber-400" /> STADIUM ROAR
                   </span>
-                )}
-                {liveStats.crowdSupport < 35 && (
+                ) : liveStats.crowdSupport < 35 ? (
                   <span className="text-[9px] bg-red-500/20 text-red-400 font-black border border-red-500/30 px-2 py-0.5 rounded-full uppercase tracking-widest animate-pulse flex items-center gap-1">
                     <AlertTriangle className="w-3 h-3 text-red-400" /> CROWD PRESSURE
                   </span>
-                )}
-                {liveStats.crowdSupport >= 35 && liveStats.crowdSupport <= 75 && (
+                ) : (
                   <span className="text-[9px] text-zinc-500 tracking-wider font-bold">ATMOSPHERE: INTENSE</span>
                 )}
 
-                <span className="font-bold flex items-center gap-1.5" style={{ color: away.primary }}>
+                <span className="font-bold flex items-center gap-1.5 animate-fade-in" style={{ color: away.primary }}>
                   {away.short} Fans ({awaySupport}%)
                 </span>
               </div>
@@ -365,12 +405,18 @@ export default function LiveMatchViewer({ match, userTeam = 'CSK', onComplete })
 
               {/* Striker */}
               {liveStats.activeStriker && (
-                <div className="flex justify-between items-center bg-white/[0.02] border border-white/5 px-3 py-2 rounded-lg relative overflow-hidden">
+                <div className={`flex justify-between items-center bg-white/[0.02] border px-3 py-2.5 rounded-lg relative overflow-hidden transition-all duration-300 ${isStrikerStar ? 'border-amber-500/60 bg-amber-500/[0.02] shadow-[0_0_15px_rgba(245,158,11,0.2)]' : 'border-white/5'}`}>
                   <div className="absolute top-0 left-0 bottom-0 w-1" style={{ backgroundColor: currentInningsTeam.primary }} />
                   <div className="pl-1">
                     <div className="font-bold text-sm text-zinc-100 flex items-center gap-1.5">
                       {liveStats.activeStriker}
-                      <span className="text-[9px] bg-amber-400/20 text-amber-400 px-1 py-0.5 rounded font-black">STRIKE</span>
+                      {isStrikerStar ? (
+                        <span className="text-[9px] bg-amber-400 text-black px-1.5 py-0.5 rounded font-black flex items-center gap-0.5 shadow-sm animate-pulse">
+                          ★ STAR
+                        </span>
+                      ) : (
+                        <span className="text-[9px] bg-zinc-850 text-zinc-400 px-1 py-0.5 rounded font-black">STRIKE</span>
+                      )}
                     </div>
                     <div className="text-[10px] text-zinc-500 mt-0.5 font-mono">Fours: {liveStats.batters[liveStats.activeStriker]?.fours || 0} · Sixes: {liveStats.batters[liveStats.activeStriker]?.sixes || 0}</div>
                   </div>
@@ -408,10 +454,17 @@ export default function LiveMatchViewer({ match, userTeam = 'CSK', onComplete })
               </div>
 
               {liveStats.activeBowler && (
-                <div className="flex justify-between items-center bg-white/[0.02] border border-white/5 px-3 py-3 rounded-lg relative overflow-hidden">
+                <div className={`flex justify-between items-center bg-white/[0.02] border px-3 py-3 rounded-lg relative overflow-hidden transition-all duration-300 ${isBowlerStar ? 'border-fuchsia-500/60 bg-fuchsia-500/[0.02] shadow-[0_0_15px_rgba(217,70,239,0.2)]' : 'border-white/5'}`}>
                   <div className="absolute top-0 left-0 bottom-0 w-1" style={{ backgroundColor: bowlingTeam.primary }} />
                   <div className="pl-1">
-                    <div className="font-bold text-sm text-zinc-100">{liveStats.activeBowler}</div>
+                    <div className="font-bold text-sm text-zinc-100 flex items-center gap-1.5">
+                      {liveStats.activeBowler}
+                      {isBowlerStar && (
+                        <span className="text-[9px] bg-fuchsia-500 text-white px-1.5 py-0.5 rounded font-black flex items-center gap-0.5 animate-pulse shadow-sm">
+                          ★ STAR
+                        </span>
+                      )}
+                    </div>
                     <span className="text-[10px] text-zinc-500 font-mono block mt-0.5">Econ: {
                       (liveStats.bowlers[liveStats.activeBowler]?.balls > 0 
                         ? (liveStats.bowlers[liveStats.activeBowler].runs / (liveStats.bowlers[liveStats.activeBowler].balls / 6)).toFixed(2) 
@@ -452,15 +505,21 @@ export default function LiveMatchViewer({ match, userTeam = 'CSK', onComplete })
               const isSix = e.runs === 6;
               const isFour = e.runs === 4;
               const isWkt = e.isWicket;
+              const isBallStar = e.isStrikerStar || e.isBowlerStar;
               
               return (
-                <div key={idx} className="text-xs border-b border-zinc-900 pb-3 flex flex-col gap-1.5 animate-fade-in">
+                <div key={idx} className={`text-xs border-b border-zinc-900 pb-3 flex flex-col gap-1.5 animate-fade-in relative overflow-hidden rounded-lg p-2 transition-all duration-300 ${isBallStar ? 'bg-amber-500/[0.02] border-l-2 border-amber-500/40 pl-2' : ''}`}>
                   <div className="flex items-center gap-2">
                     <span className="font-mono text-zinc-500 font-semibold bg-zinc-900/60 px-1.5 py-0.5 rounded text-[10px]">{e.overNum}</span>
                     {isWkt && <span className="bg-red-500/20 text-red-400 border border-red-500/30 text-[8px] font-black tracking-wider px-1.5 py-0.5 rounded uppercase">WICKET</span>}
                     {isSix && <span className="bg-amber-400/20 text-amber-400 border border-amber-500/30 text-[8px] font-black tracking-wider px-1.5 py-0.5 rounded uppercase font-bold">SIX!</span>}
                     {isFour && <span className="bg-emerald-400/20 text-emerald-400 border border-emerald-500/30 text-[8px] font-black tracking-wider px-1.5 py-0.5 rounded uppercase">FOUR</span>}
                     {e.isExtra && <span className="bg-zinc-800 text-zinc-400 text-[8px] font-bold px-1.5 py-0.5 rounded uppercase">WIDE</span>}
+                    {isBallStar && (
+                      <span className="text-[8px] bg-amber-400/10 text-amber-450 font-black border border-amber-500/20 px-1 py-0.5 rounded flex items-center gap-0.5 uppercase tracking-wide">
+                        ★ {e.isStrikerStar ? 'Star Batter' : 'Star Bowler'}
+                      </span>
+                    )}
                     <span className="text-[10px] font-mono text-zinc-400 font-bold ml-auto">{e.scoreAtBall}</span>
                   </div>
                   
@@ -497,7 +556,7 @@ export default function LiveMatchViewer({ match, userTeam = 'CSK', onComplete })
           <button
             onClick={() => setIsPlaying(!isPlaying)}
             disabled={isFinished}
-            className="w-12 h-12 bg-white hover:bg-zinc-200 text-black flex items-center justify-center rounded-full shadow-lg disabled:opacity-50 transition-all hover:scale-105 active:scale-95"
+            className="w-12 h-12 bg-white hover:bg-zinc-200 text-black flex items-center justify-center rounded-full shadow-lg disabled:opacity-50 transition-all hover:scale-105 active:scale-95 animate-pulse"
           >
             {isPlaying ? <Pause className="w-5 h-5 fill-black" /> : <Play className="w-5 h-5 fill-black" />}
           </button>
