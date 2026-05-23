@@ -362,6 +362,12 @@ export function useTournament() {
     return null;
   }
 
+  function applyMatchStats(match) {
+    const next = accumulateMatchStats(teamStats, allPlayerStats, match, userName, userTeam);
+    setTeamStats(next.teamStats);
+    setAllPlayerStats(next.playerStats);
+  }
+
   function updatePopularityAfterMatch(m) {
     if (m.home !== userTeam && m.away !== userTeam) return; // Only user team matches affect fan base
     const won = m.winner === userTeam;
