@@ -17,18 +17,24 @@ import SeasonSummary from './components/SeasonSummary';
 import GodModeAlert from './components/GodModeAlert';
 import HistoryView from './components/HistoryView';
 
+// Premium interactive features
+import MatchPreview from './components/MatchPreview';
+import LiveMatchViewer from './components/LiveMatchViewer';
+
 function MainApp({ user }) {
   const {
     state: {
       userName, userTeam, tourney, schedule, results, phase, tab, playoff, playoffStep, champion,
       openMatch, pendingToss, godModeMatches, godAlerts, hydrated,
-      teamStats, allPlayerStats, history, careerRivalries
+      teamStats, allPlayerStats, history, careerRivalries,
+      activePreview, liveMatch, hallOfFame, unlockedAchievements
     },
     setters: {
-      setTab, setOpenMatch, setGodAlerts
+      setTab, setOpenMatch, setGodAlerts, setActivePreview
     },
     actions: {
-      startTournament, reset, simNext, sim10, simAll, simPlayoff, completeToss
+      startTournament, reset, simNext, sim10, simAll, simPlayoff, completeToss,
+      executeLeagueMatch, executePlayoffMatch, completeLiveMatch
     }
   } = useTournament();
 
@@ -46,6 +52,17 @@ function MainApp({ user }) {
   }, [phase, setTab]); 
 
   if (!hydrated) return null;
+
+  // Intercept normal dashboard rendering if user is actively watching a match live
+  if (liveMatch) {
+    return (
+      <LiveMatchViewer
+        match={liveMatch.match}
+        userTeam={userTeam}
+        onComplete={completeLiveMatch}
+      />
+    );
+  }
 
   return (
     <div className="min-h-screen text-zinc-100 app-bg font-sans">
@@ -121,18 +138,52 @@ function MainApp({ user }) {
             {tab === 'me' && (
               <MyProfile
                 userName={userName}
+                userTeam={userTeam}
                 results={[...results, playoff.q1, playoff.elim, playoff.q2, playoff.final].filter(Boolean)}
                 playerStats={allPlayerStats}
+                fanPopularity={fanPopularity}
               />
             )}
             {tab === 'playoffs' && <PlayoffsView playoff={playoff} onOpen={setOpenMatch} champion={champion} />}
-            {tab === 'history' && <HistoryView userName={userName} history={history} careerRivalries={careerRivalries} />}
+            {tab === 'history' && (
+              <HistoryView
+                userName={userName}
+                history={history}
+                careerRivalries={careerRivalries}
+                hallOfFame={hallOfFame}
+                unlockedAchievements={unlockedAchievements}
+              />
+            )}
           </main>
         </>
       )}
 
+      {/* Popups, interactive overlays & modals */}
       <MatchDetailModal match={openMatch} onClose={() => setOpenMatch(null)} />
+      
       <TossModal toss={pendingToss} onChoose={completeToss} />
+      
+      {activePreview && (
+        <MatchPreview
+          homeId={activePreview.home}
+          awayId={activePreview.away}
+          userName={userName}
+          teamStats={teamStats}
+          playerStats={allPlayerStats}
+          results={results}
+          careerRivalries={careerRivalries}
+          onSimulate={(tactics) => {
+            if (activePreview.type === 'league') executeLeagueMatch(activePreview, tactics, false);
+            else executePlayoffMatch(activePreview, tactics, false);
+          }}
+          onWatch={(tactics) => {
+            if (activePreview.type === 'league') executeLeagueMatch(activePreview, tactics, true);
+            else executePlayoffMatch(activePreview, tactics, true);
+          }}
+          onClose={() => setActivePreview(null)}
+        />
+      )}
+
       <GodModeAlert alerts={godAlerts} onDismiss={() => setGodAlerts([])} />
     </div>
   );
