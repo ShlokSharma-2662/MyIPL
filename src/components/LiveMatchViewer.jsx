@@ -260,7 +260,7 @@ export default function LiveMatchViewer({ match, userTeam = 'CSK', onComplete })
   const showBowlerStarAlert = isBowlerStar && bowlerBalls === 1;
 
   return (
-    <div className="fixed inset-0 bg-black/90 backdrop-blur-lg z-50 flex flex-col font-sans text-zinc-100 animate-fade-in relative">
+    <div className="fixed inset-0 bg-black/90 backdrop-blur-lg z-50 flex flex-col font-sans text-zinc-100 animate-fade-in">
       
       {/* Dynamic Star Entrance Alert Overlay (Cinematic Flash Overlay) */}
       {(showStrikerStarAlert || showBowlerStarAlert) && (
