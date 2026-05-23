@@ -27,7 +27,7 @@ function MainApp({ user }) {
       userName, userTeam, tourney, schedule, results, phase, tab, playoff, playoffStep, champion,
       openMatch, pendingToss, godModeMatches, godAlerts, hydrated,
       teamStats, allPlayerStats, history, careerRivalries,
-      activePreview, liveMatch, hallOfFame, unlockedAchievements
+      activePreview, liveMatch, hallOfFame, unlockedAchievements, fanPopularity
     },
     setters: {
       setTab, setOpenMatch, setGodAlerts, setActivePreview
