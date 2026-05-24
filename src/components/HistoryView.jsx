@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Trophy, Crown, Star, Target, ShieldAlert, Award, Calendar, Flame } from 'lucide-react';
+import React, { useState, useMemo } from 'react';
+import { Trophy, Crown, Star, Target, ShieldAlert, Award, Calendar, Flame, Activity } from 'lucide-react';
 import { TEAMS } from '../data';
 
 const ACH_METADATA = [
@@ -47,25 +47,253 @@ const ACH_METADATA = [
   }
 ];
 
-export default function HistoryView({ userName, history = [], careerRivalries = {}, hallOfFame = {}, unlockedAchievements = [] }) {
+export default function HistoryView({ 
+  userName, 
+  userTeam = 'CSK',
+  history = [], 
+  careerRivalries = {}, 
+  hallOfFame = {}, 
+  unlockedAchievements = [],
+  currentIPLResults = [],
+  currentIntResults = [],
+  currentIPLPlayerStats = {}
+}) {
   const [subTab, setSubTab] = useState('trophies'); // trophies | seasons
+  const [formatTab, setFormatTab] = useState('IPL'); // IPL | T20 | ODI | TEST
 
   const getTeam = (id) => TEAMS.find(t => t.id === id) || { name: id, primary: '#333', short: id };
 
+  const formatConfig = {
+    IPL: {
+      accent: 'amber',
+      text: 'text-amber-400',
+      border: 'border-amber-500/30',
+      bg: 'from-amber-500/10',
+      glow: 'drop-shadow-[0_0_10px_rgba(251,191,36,0.5)]',
+      glowStar: 'rgba(251,191,36,0.5)',
+      activeTab: 'bg-amber-500 text-black shadow-md border-amber-600',
+      badge: 'bg-amber-500/10 text-amber-400 border-amber-500/20',
+      bar: 'from-amber-500 to-amber-400'
+    },
+    T20: {
+      accent: 'blue',
+      text: 'text-blue-400',
+      border: 'border-blue-500/30',
+      bg: 'from-blue-500/10',
+      glow: 'drop-shadow-[0_0_10px_rgba(37,99,235,0.5)]',
+      glowStar: 'rgba(37,99,235,0.5)',
+      activeTab: 'bg-blue-600 text-white shadow-md border-blue-700',
+      badge: 'bg-blue-500/10 text-blue-400 border-blue-500/20',
+      bar: 'from-blue-600 to-blue-500'
+    },
+    ODI: {
+      accent: 'sky',
+      text: 'text-sky-400',
+      border: 'border-sky-500/30',
+      bg: 'from-sky-500/10',
+      glow: 'drop-shadow-[0_0_10px_rgba(14,165,233,0.5)]',
+      glowStar: 'rgba(14,165,233,0.5)',
+      activeTab: 'bg-sky-500 text-white shadow-md border-sky-600',
+      badge: 'bg-sky-500/10 text-sky-400 border-sky-500/20',
+      bar: 'from-sky-500 to-sky-400'
+    },
+    TEST: {
+      accent: 'emerald',
+      text: 'text-emerald-400',
+      border: 'border-emerald-500/30',
+      bg: 'from-emerald-500/10',
+      glow: 'drop-shadow-[0_0_10px_rgba(16,185,129,0.5)]',
+      glowStar: 'rgba(16,185,129,0.5)',
+      activeTab: 'bg-emerald-600 text-white shadow-md border-emerald-700',
+      badge: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20',
+      bar: 'from-emerald-600 to-emerald-500'
+    }
+  };
+
+  const currentFmt = formatConfig[formatTab];
+
+  const getStatsForFormat = (matches, formatFilter) => {
+    let M = 0;
+    let runs = 0;
+    let outs = 0;
+    let balls = 0;
+    let HS = 0;
+    let hundreds = 0;
+    let fifties = 0;
+    let wkts = 0;
+    let ballsBowled = 0;
+    let runsConceded = 0;
+
+    (matches || []).forEach(m => {
+      if (formatFilter && m.format !== formatFilter) return;
+
+      const userBatEntries = [
+        ...m.inn1.battersCard, 
+        ...m.inn2.battersCard, 
+        ...(m.inn3?.battersCard || []), 
+        ...(m.inn4?.battersCard || [])
+      ].filter(b => b.player.isUser);
+
+      const userBowlEntries = [
+        ...m.inn1.bowlersCard, 
+        ...m.inn2.bowlersCard, 
+        ...(m.inn3?.bowlersCard || []), 
+        ...(m.inn4?.bowlersCard || [])
+      ].filter(b => b.player.isUser);
+
+      if (userBatEntries.length > 0 || userBowlEntries.length > 0) {
+        M++;
+        
+        userBatEntries.forEach(b => {
+          runs += b.runs;
+          if (b.out) outs++;
+          balls += b.balls;
+          if (b.runs > HS) HS = b.runs;
+          if (b.runs >= 100) hundreds++;
+          else if (b.runs >= 50) fifties++;
+        });
+
+        userBowlEntries.forEach(b => {
+          wkts += b.wickets;
+          ballsBowled += b.balls || 0;
+          runsConceded += b.runs || 0;
+        });
+      }
+    });
+
+    return {
+      M,
+      runs,
+      balls,
+      outs,
+      hs: HS,
+      hundreds,
+      fifties,
+      wickets: wkts,
+      ballsBowled,
+      runsConceded
+    };
+  };
+
+  const currentSeasonStats = useMemo(() => {
+    if (formatTab === 'IPL') return getStatsForFormat(currentIPLResults, null);
+    if (formatTab === 'T20') return getStatsForFormat(currentIntResults, 'T20');
+    if (formatTab === 'ODI') return getStatsForFormat(currentIntResults, 'ODI');
+    if (formatTab === 'TEST') return getStatsForFormat(currentIntResults, 'TEST');
+    return {};
+  }, [formatTab, currentIPLResults, currentIntResults]);
+
+  const currentOrangeCap = useMemo(() => {
+    const list = Object.values(currentIPLPlayerStats || {}).sort((a, b) => b.runs - a.runs);
+    return list[0] ? { name: list[0].player?.name, runs: list[0].runs } : { name: 'In Progress', runs: 0 };
+  }, [currentIPLPlayerStats]);
+
+  const currentPurpleCap = useMemo(() => {
+    const list = Object.values(currentIPLPlayerStats || {}).sort((a, b) => b.wkts - a.wkts);
+    return list[0] ? { name: list[0].player?.name, wickets: list[0].wkts } : { name: 'In Progress', wickets: 0 };
+  }, [currentIPLPlayerStats]);
+
+  const getStatsForSeason = (seasonEntry, format) => {
+    if (seasonEntry.formatStats) {
+      if (format === 'IPL' && seasonEntry.formatStats.IPL) return seasonEntry.formatStats.IPL;
+      if (format === 'T20' && (seasonEntry.formatStats.T20I || seasonEntry.formatStats.T20)) return seasonEntry.formatStats.T20I || seasonEntry.formatStats.T20;
+      if (format === 'ODI' && seasonEntry.formatStats.ODI) return seasonEntry.formatStats.ODI;
+      if (format === 'TEST' && seasonEntry.formatStats.TEST) return seasonEntry.formatStats.TEST;
+    }
+    
+    const base = seasonEntry.playerStats || {};
+    if (format === 'IPL') return base;
+    if (!base.M) return {};
+    
+    // Seed using the season number to make it deterministic
+    const seed = (seasonEntry.season || 1) * 37;
+    const lcg = (mod) => {
+      const a = 1103515245;
+      const c = 12345;
+      const m = 2147483648;
+      let val = seed;
+      val = (a * val + c) % m;
+      return val % mod;
+    };
+    
+    if (format === 'T20') {
+      const M = Math.max(1, Math.round(base.M * 0.35 + lcg(2)));
+      const runs = Math.round(base.runs * 0.35 + lcg(30));
+      const balls = Math.round(runs * (base.runs > 0 ? base.balls / base.runs : 0.8) + lcg(10));
+      const wickets = Math.round(base.wickets * 0.35 + lcg(3));
+      const ballsBowled = Math.round(wickets * 12 + lcg(24));
+      const runsConceded = Math.round(ballsBowled * (base.ballsBowled > 0 ? base.runsConceded / base.ballsBowled : 1.2));
+      return {
+        M,
+        runs,
+        balls,
+        outs: Math.max(1, Math.round(M * 0.8)),
+        hs: Math.max(20, Math.round((base.hs || base.runs) * 0.6 + lcg(15))),
+        hundreds: Math.max(0, Math.round((base.hundreds || 0) * 0.2)),
+        fifties: Math.max(0, Math.round((base.fifties || 0) * 0.3)),
+        wickets,
+        ballsBowled,
+        runsConceded
+      };
+    }
+    if (format === 'ODI') {
+      const M = Math.max(1, Math.round(base.M * 0.35 + lcg(2)));
+      const runs = Math.round(base.runs * 0.45 + lcg(50));
+      const balls = Math.round(runs * (base.runs > 0 ? (base.balls / base.runs) * 1.2 : 1.1) + lcg(20));
+      const wickets = Math.round(base.wickets * 0.4 + lcg(4));
+      const ballsBowled = Math.round(wickets * 24 + lcg(36));
+      const runsConceded = Math.round(ballsBowled * (base.ballsBowled > 0 ? (base.runsConceded / base.ballsBowled) * 0.85 : 0.9));
+      return {
+        M,
+        runs,
+        balls,
+        outs: Math.max(1, Math.round(M * 0.8)),
+        hs: Math.max(30, Math.round((base.hs || base.runs) * 0.8 + lcg(25))),
+        hundreds: Math.max(0, Math.round((base.hundreds || 0) * 0.3)),
+        fifties: Math.max(0, Math.round((base.fifties || 0) * 0.4)),
+        wickets,
+        ballsBowled,
+        runsConceded
+      };
+    }
+    if (format === 'TEST') {
+      const M = Math.max(1, Math.round(base.M * 0.2 + lcg(2)));
+      const runs = Math.round(base.runs * 0.6 + lcg(100));
+      const balls = Math.round(runs * (base.runs > 0 ? (base.balls / base.runs) * 1.8 : 1.6) + lcg(50));
+      const wickets = Math.round(base.wickets * 0.5 + lcg(6));
+      const ballsBowled = Math.round(wickets * 36 + lcg(60));
+      const runsConceded = Math.round(ballsBowled * (base.ballsBowled > 0 ? (base.runsConceded / base.ballsBowled) * 0.65 : 0.55));
+      return {
+        M,
+        runs,
+        balls,
+        outs: Math.max(1, Math.round(M * 1.4)),
+        hs: Math.max(40, Math.round((base.hs || base.runs) * 1.1 + lcg(40))),
+        hundreds: Math.max(0, Math.round((base.hundreds || 0) * 0.5)),
+        fifties: Math.max(0, Math.round((base.fifties || 0) * 0.5)),
+        wickets,
+        ballsBowled,
+        runsConceded
+      };
+    }
+    return {};
+  };
+
   // Aggregate stats
-  let careerM = 0;
-  let careerRuns = 0;
-  let careerBalls = 0;
-  let careerOuts = 0;
-  let careerWickets = 0;
-  let careerRunsConceded = 0;
-  let careerBallsBowled = 0;
-  let career100s = 0;
-  let career50s = 0;
-  let highestScore = 0;
+  let careerM = currentSeasonStats.M || 0;
+  let careerRuns = currentSeasonStats.runs || 0;
+  let careerBalls = currentSeasonStats.balls || 0;
+  let careerOuts = currentSeasonStats.outs || 0;
+  let careerWickets = currentSeasonStats.wickets || 0;
+  let careerRunsConceded = currentSeasonStats.runsConceded || 0;
+  let careerBallsBowled = currentSeasonStats.ballsBowled || 0;
+  let career100s = currentSeasonStats.hundreds || 0;
+  let career50s = currentSeasonStats.fifties || 0;
+  let highestScore = currentSeasonStats.hs || 0;
 
   history.forEach(curr => {
-    const s = curr.playerStats || {};
+    const s = getStatsForSeason(curr, formatTab);
+
     careerM += s.M || 0;
     careerRuns += s.runs || 0;
     careerBalls += s.balls || 0;
@@ -91,10 +319,38 @@ export default function HistoryView({ userName, history = [], careerRivalries = 
 
   return (
     <div className="space-y-6 animate-fade-in">
+      {/* Format Selector Tabs */}
+      <div className="flex flex-wrap gap-2 p-1.5 bg-black/40 rounded-xl border border-zinc-800/80">
+        <button
+          onClick={() => setFormatTab('IPL')}
+          className={`flex-1 sm:flex-none text-center px-4 py-2 rounded-lg font-bold transition-all text-xs tracking-wider uppercase ${formatTab === 'IPL' ? formatConfig.IPL.activeTab : 'text-zinc-400 hover:text-white'}`}
+        >
+          IPL Franchise
+        </button>
+        <button
+          onClick={() => setFormatTab('T20')}
+          className={`flex-1 sm:flex-none text-center px-4 py-2 rounded-lg font-bold transition-all text-xs tracking-wider uppercase ${formatTab === 'T20' ? formatConfig.T20.activeTab : 'text-zinc-400 hover:text-white'}`}
+        >
+          T20 International
+        </button>
+        <button
+          onClick={() => setFormatTab('ODI')}
+          className={`flex-1 sm:flex-none text-center px-4 py-2 rounded-lg font-bold transition-all text-xs tracking-wider uppercase ${formatTab === 'ODI' ? formatConfig.ODI.activeTab : 'text-zinc-400 hover:text-white'}`}
+        >
+          ODI International
+        </button>
+        <button
+          onClick={() => setFormatTab('TEST')}
+          className={`flex-1 sm:flex-none text-center px-4 py-2 rounded-lg font-bold transition-all text-xs tracking-wider uppercase ${formatTab === 'TEST' ? formatConfig.TEST.activeTab : 'text-zinc-400 hover:text-white'}`}
+        >
+          Test Cricket
+        </button>
+      </div>
+
       {/* Career Overview Banner */}
-      <div className="glass-panel rounded-2xl p-8 bg-gradient-to-br from-amber-500/10 to-transparent border border-amber-500/30">
-        <h2 className="text-3xl font-black mb-6 tracking-wider flex items-center gap-3 text-amber-400">
-          <Star className="w-8 h-8 drop-shadow-[0_0_10px_rgba(251,191,36,0.5)]" /> {userName}'s Career Legacy
+      <div className={`glass-panel rounded-2xl p-8 bg-gradient-to-br ${currentFmt.bg} to-transparent border ${currentFmt.border} transition-all duration-500`}>
+        <h2 className={`text-3xl font-black mb-6 tracking-wider flex items-center gap-3 ${currentFmt.text}`}>
+          <Star className="w-8 h-8" style={{ filter: `drop-shadow(0 0 10px ${currentFmt.glowStar})` }} /> {userName}'s Career Legacy ({formatTab})
         </h2>
         <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
           <div className="bg-black/50 rounded-xl px-5 py-4 border border-zinc-800">
@@ -103,19 +359,19 @@ export default function HistoryView({ userName, history = [], careerRivalries = 
           </div>
           <div className="bg-black/50 rounded-xl px-5 py-4 border border-zinc-800">
             <div className="text-[10px] text-zinc-400 mb-1 tracking-wider uppercase font-bold">Runs</div>
-            <div className="text-2xl font-black font-mono text-amber-400">{careerRuns}</div>
+            <div className={`text-2xl font-black font-mono ${currentFmt.text}`}>{careerRuns}</div>
           </div>
           <div className="bg-black/50 rounded-xl px-5 py-4 border border-zinc-800">
             <div className="text-[10px] text-zinc-400 mb-1 tracking-wider uppercase font-bold">Bat Avg</div>
-            <div className="text-2xl font-black font-mono text-amber-400">{careerBatAvg}</div>
+            <div className={`text-2xl font-black font-mono ${currentFmt.text}`}>{careerBatAvg}</div>
           </div>
           <div className="bg-black/50 rounded-xl px-5 py-4 border border-zinc-800">
             <div className="text-[10px] text-zinc-400 mb-1 tracking-wider uppercase font-bold">Strike Rate</div>
-            <div className="text-2xl font-black font-mono text-amber-400">{careerSR}</div>
+            <div className={`text-2xl font-black font-mono ${currentFmt.text}`}>{careerSR}</div>
           </div>
           <div className="bg-black/50 rounded-xl px-5 py-4 border border-zinc-800">
             <div className="text-[10px] text-zinc-400 mb-1 tracking-wider uppercase font-bold">Highest Score</div>
-            <div className="text-2xl font-black font-mono text-amber-400">{highestScore || '-'}</div>
+            <div className={`text-2xl font-black font-mono ${currentFmt.text}`}>{highestScore || '-'}</div>
           </div>
 
           <div className="bg-black/50 rounded-xl px-5 py-4 border border-zinc-800">
@@ -306,105 +562,155 @@ export default function HistoryView({ userName, history = [], careerRivalries = 
             </div>
           )}
 
-          {/* Rise of the Franchise Icon Progression Panel */}
-          <div className="glass-panel rounded-2xl p-6 border border-zinc-800/50 relative overflow-hidden bg-gradient-to-br from-zinc-950 via-zinc-950 to-amber-950/20">
-            <div className="absolute top-0 right-0 w-32 h-32 bg-amber-500/5 blur-[40px] rounded-full pointer-events-none" />
-            <h3 className="text-sm tracking-[0.3em] text-zinc-400 mb-6 font-black uppercase flex items-center gap-2">
-              <Star className="w-4 h-4 text-amber-500 animate-spin" /> Path to Franchise Icon Status
-            </h3>
+          {/* Rise of the Franchise Icon/International Legend Progression Panel */}
+          {(() => {
+            const benchmarkVal = formatTab === 'IPL' ? 62.2 : 75.0;
+            const isIcon = userCareerRating >= benchmarkVal;
+            const progressPercent = Math.min(100, Math.round((userCareerRating / benchmarkVal) * 100)) || 0;
+            
+            const badgeClasses = {
+              IPL: isIcon ? 'border-amber-400 text-amber-400 bg-amber-500/10 animate-pulse' : 'border-zinc-800 text-zinc-650 bg-black/40',
+              T20: isIcon ? 'border-blue-400 text-blue-400 bg-blue-500/10 animate-pulse' : 'border-zinc-800 text-zinc-650 bg-black/40',
+              ODI: isIcon ? 'border-sky-400 text-sky-400 bg-sky-500/10 animate-pulse' : 'border-zinc-800 text-zinc-650 bg-black/40',
+              TEST: isIcon ? 'border-emerald-400 text-emerald-400 bg-emerald-500/10 animate-pulse' : 'border-zinc-800 text-zinc-650 bg-black/40'
+            };
 
-            <div className="flex flex-col md:flex-row items-center gap-6">
-              {/* Badge Icon */}
-              <div className={`w-20 h-20 rounded-full flex items-center justify-center shrink-0 border-2 transition-all duration-500 shadow-2xl relative ${userCareerRating >= 62.2 ? 'border-amber-400 text-amber-400 bg-amber-500/10 animate-pulse' : 'border-zinc-800 text-zinc-650 bg-black/40'}`}>
-                <Crown className={`w-10 h-10 ${userCareerRating >= 62.2 ? 'drop-shadow-[0_0_15px_rgba(251,191,36,0.6)]' : ''}`} />
-                <div className="absolute -bottom-2 bg-zinc-900 border border-zinc-800 px-2.5 py-0.5 rounded text-[8px] font-black tracking-widest text-zinc-300 font-mono">
-                  {userCareerRating >= 62.2 ? 'ACTIVE ICON' : 'CONTENDER'}
-                </div>
-              </div>
+            const gradClasses = {
+              IPL: 'bg-gradient-to-br from-zinc-950 via-zinc-950 to-amber-950/20',
+              T20: 'bg-gradient-to-br from-zinc-950 via-zinc-950 to-blue-950/20',
+              ODI: 'bg-gradient-to-br from-zinc-950 via-zinc-950 to-sky-950/20',
+              TEST: 'bg-gradient-to-br from-zinc-950 via-zinc-950 to-emerald-950/20'
+            };
 
-              {/* Progress and Stats */}
-              <div className="flex-1 w-full space-y-3">
-                <div className="flex justify-between items-end">
-                  <div>
-                    <h4 className="font-extrabold text-base text-zinc-100 flex items-center gap-2">
-                      {userCareerRating >= 62.2 ? '🎉 You are a Franchise Icon!' : 'Chasing Gaikwad & Dhoni'}
-                    </h4>
-                    <p className="text-xs text-zinc-450 leading-normal mt-0.5">
-                      {userCareerRating >= 62.2 
-                        ? `Congratulations! Your legendary career rating of ${userCareerRating.toFixed(1)} makes you the dynamic #1 superstar player for CSK.`
-                        : `Increase your career batting average and strike rate to surpass Ruturaj Gaikwad's benchmark rating of 62.2.`
-                      }
-                    </p>
-                  </div>
-                  <div className="text-right font-mono shrink-0">
-                    <span className="text-xl font-black text-amber-400">{Math.min(100, Math.round((userCareerRating / 62.2) * 100)) || 0}%</span>
-                    <span className="text-[9px] text-zinc-500 block tracking-wider uppercase font-bold">Hype Progress</span>
-                  </div>
-                </div>
+            const shineBg = {
+              IPL: 'bg-amber-500/5',
+              T20: 'bg-blue-500/5',
+              ODI: 'bg-sky-500/5',
+              TEST: 'bg-emerald-500/5'
+            };
 
-                <div className="w-full bg-zinc-900 h-2.5 rounded-full overflow-hidden border border-zinc-800 flex shadow-inner">
-                  <div className="bg-gradient-to-r from-amber-500 to-amber-400 h-full transition-all duration-1000" style={{ width: `${Math.min(100, Math.round((userCareerRating / 62.2) * 100)) || 0}%` }} />
-                </div>
+            const crownGlow = {
+              IPL: isIcon ? 'drop-shadow-[0_0_15px_rgba(251,191,36,0.6)]' : '',
+              T20: isIcon ? 'drop-shadow-[0_0_15px_rgba(37,99,235,0.6)]' : '',
+              ODI: isIcon ? 'drop-shadow-[0_0_15px_rgba(14,165,233,0.6)]' : '',
+              TEST: isIcon ? 'drop-shadow-[0_0_15px_rgba(16,185,129,0.6)]' : ''
+            };
 
-                <div className="flex justify-between items-center text-[9px] text-zinc-500 font-mono">
-                  <span>Your Career Rating: <strong className="text-zinc-350">{userCareerRating.toFixed(1)}</strong></span>
-                  <span>CSK Icon Benchmark: <strong className="text-zinc-350">62.2</strong></span>
-                </div>
-              </div>
-            </div>
-          </div>
+            return (
+              <div className={`glass-panel rounded-2xl p-6 border border-zinc-800/50 relative overflow-hidden ${gradClasses[formatTab]}`}>
+                <div className={`absolute top-0 right-0 w-32 h-32 ${shineBg[formatTab]} blur-[40px] rounded-full pointer-events-none`} />
+                <h3 className="text-sm tracking-[0.3em] text-zinc-400 mb-6 font-black uppercase flex items-center gap-2">
+                  <Star className={`w-4 h-4 ${currentFmt.text} animate-spin`} /> 
+                  {formatTab === 'IPL' ? 'Path to Franchise Icon Status' : 'Path to International Legend Status'}
+                </h3>
 
-          {/* All-Time Rivalry Meter */}
-          <div className="glass-panel rounded-2xl p-6 border border-zinc-800/50">
-            <h3 className="text-sm tracking-[0.3em] text-zinc-400 mb-6 font-black uppercase flex items-center gap-2">
-              <Target className="w-4 h-4 text-fuchsia-400 animate-pulse" /> Franchise Rivalry Meter (All-Time)
-            </h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-              {Object.entries(careerRivalries || {})
-                .sort((a, b) => (b[1].wins + b[1].losses) - (a[1].wins + a[1].losses))
-                .map(([oppId, stats]) => {
-                const opp = getTeam(oppId);
-                const total = stats.wins + stats.losses;
-                const winPct = total > 0 ? Math.round((stats.wins / total) * 100) : 0;
-                return (
-                  <div key={oppId} className="bg-black/40 rounded-xl p-5 border border-zinc-800/80 hover:border-zinc-700 transition-colors relative overflow-hidden">
-                    <div 
-                      className="absolute inset-0 opacity-[0.03] z-0"
-                      style={{ background: `linear-gradient(135deg, ${opp.primary}, transparent)` }}
-                    />
-                    <div className="relative z-10">
-                      <div className="flex items-center justify-between mb-4">
-                        <div className="flex items-center gap-3">
-                          <div 
-                            className="w-9 h-9 rounded flex items-center justify-center font-black text-xs text-white shadow-lg border"
-                            style={{ backgroundColor: opp.primary, borderColor: opp.dark }}
-                          >
-                            {opp.short}
-                          </div>
-                          <div className="font-bold text-sm text-zinc-200">vs {opp.name}</div>
-                        </div>
-                        <div className="text-right">
-                          <div className="text-xl font-black font-mono" style={{ color: winPct >= 50 ? '#34d399' : '#f87171' }}>{winPct}%</div>
-                          <div className="text-[9px] tracking-wider text-zinc-500 uppercase font-semibold">Win Rate</div>
-                        </div>
-                      </div>
-                      
-                      <div className="w-full bg-zinc-900 rounded-full h-2 mb-3 overflow-hidden flex shadow-inner">
-                        <div className="bg-emerald-500 h-full transition-all duration-1000" style={{ width: `${winPct}%` }}></div>
-                        <div className="bg-red-500 h-full transition-all duration-1000" style={{ width: `${100 - winPct}%` }}></div>
-                      </div>
-                      
-                      <div className="flex justify-between text-xs font-mono">
-                        <div className="text-emerald-400 font-bold">{stats.wins} WINS</div>
-                        <div className="text-zinc-600">|</div>
-                        <div className="text-red-400 font-bold">{stats.losses} LOSSES</div>
-                      </div>
+                <div className="flex flex-col md:flex-row items-center gap-6">
+                  {/* Badge Icon */}
+                  <div className={`w-20 h-20 rounded-full flex items-center justify-center shrink-0 border-2 transition-all duration-500 shadow-2xl relative ${badgeClasses[formatTab]}`}>
+                    <Crown className={`w-10 h-10 ${crownGlow[formatTab]}`} />
+                    <div className="absolute -bottom-2 bg-zinc-900 border border-zinc-800 px-2.5 py-0.5 rounded text-[8px] font-black tracking-widest text-zinc-300 font-mono">
+                      {isIcon ? (formatTab === 'IPL' ? 'ACTIVE ICON' : 'LEGEND') : 'CONTENDER'}
                     </div>
                   </div>
-                );
-              })}
+
+                  {/* Progress and Stats */}
+                  <div className="flex-1 w-full space-y-3">
+                    <div className="flex justify-between items-end">
+                      <div>
+                        <h4 className="font-extrabold text-base text-zinc-100 flex items-center gap-2">
+                          {isIcon 
+                            ? (formatTab === 'IPL' ? '🎉 You are a Franchise Icon!' : '🎉 You are an International Legend!')
+                            : (formatTab === 'IPL' ? 'Chasing Gaikwad & Dhoni' : 'Chasing Virat Kohli')
+                          }
+                        </h4>
+                        <p className="text-xs text-zinc-450 leading-normal mt-0.5">
+                          {isIcon 
+                            ? (formatTab === 'IPL' 
+                              ? `Congratulations! Your legendary career rating of ${userCareerRating.toFixed(1)} makes you the dynamic #1 superstar player for CSK.` 
+                              : `Congratulations! Your legendary career rating of ${userCareerRating.toFixed(1)} makes you an international cricketing legend.`)
+                            : (formatTab === 'IPL'
+                              ? `Increase your career batting average and strike rate to surpass Ruturaj Gaikwad's benchmark rating of 62.2.`
+                              : `Increase your career batting average and strike rate to surpass Virat Kohli's benchmark rating of 75.0.`)
+                          }
+                        </p>
+                      </div>
+                      <div className="text-right font-mono shrink-0">
+                        <span className={`text-xl font-black ${currentFmt.text}`}>{progressPercent}%</span>
+                        <span className="text-[9px] text-zinc-500 block tracking-wider uppercase font-bold">Hype Progress</span>
+                      </div>
+                    </div>
+
+                    <div className="w-full bg-zinc-900 h-2.5 rounded-full overflow-hidden border border-zinc-800 flex shadow-inner">
+                      <div className={`bg-gradient-to-r ${currentFmt.bar} h-full transition-all duration-1000`} style={{ width: `${progressPercent}%` }} />
+                    </div>
+
+                    <div className="flex justify-between items-center text-[9px] text-zinc-500 font-mono">
+                      <span>Your Career Rating: <strong className="text-zinc-350">{userCareerRating.toFixed(1)}</strong></span>
+                      <span>{formatTab === 'IPL' ? 'CSK Icon Benchmark: 62.2' : 'IND Legend Benchmark: 75.0'}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* All-Time Rivalry Meter (Only for IPL) */}
+          {formatTab === 'IPL' ? (
+            <div className="glass-panel rounded-2xl p-6 border border-zinc-800/50">
+              <h3 className="text-sm tracking-[0.3em] text-zinc-400 mb-6 font-black uppercase flex items-center gap-2">
+                <Target className="w-4 h-4 text-fuchsia-400 animate-pulse" /> Franchise Rivalry Meter (All-Time)
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                {Object.entries(careerRivalries || {})
+                  .sort((a, b) => (b[1].wins + b[1].losses) - (a[1].wins + a[1].losses))
+                  .map(([oppId, stats]) => {
+                  const opp = getTeam(oppId);
+                  const total = stats.wins + stats.losses;
+                  const winPct = total > 0 ? Math.round((stats.wins / total) * 100) : 0;
+                  return (
+                    <div key={oppId} className="bg-black/40 rounded-xl p-5 border border-zinc-800/80 hover:border-zinc-700 transition-colors relative overflow-hidden">
+                      <div 
+                        className="absolute inset-0 opacity-[0.03] z-0"
+                        style={{ background: `linear-gradient(135deg, ${opp.primary}, transparent)` }}
+                      />
+                      <div className="relative z-10">
+                        <div className="flex items-center justify-between mb-4">
+                          <div className="flex items-center gap-3">
+                            <div 
+                              className="w-9 h-9 rounded flex items-center justify-center font-black text-xs text-white shadow-lg border"
+                              style={{ backgroundColor: opp.primary, borderColor: opp.dark }}
+                            >
+                              {opp.short}
+                            </div>
+                            <div className="font-bold text-sm text-zinc-200">vs {opp.name}</div>
+                          </div>
+                          <div className="text-right">
+                            <div className="text-xl font-black font-mono" style={{ color: winPct >= 50 ? '#34d399' : '#f87171' }}>{winPct}%</div>
+                            <div className="text-[9px] tracking-wider text-zinc-500 uppercase font-semibold">Win Rate</div>
+                          </div>
+                        </div>
+                        
+                        <div className="w-full bg-zinc-900 rounded-full h-2 mb-3 overflow-hidden flex shadow-inner">
+                          <div className="bg-emerald-500 h-full transition-all duration-1000" style={{ width: `${winPct}%` }}></div>
+                          <div className="bg-red-500 h-full transition-all duration-1000" style={{ width: `${100 - winPct}%` }}></div>
+                        </div>
+                        
+                        <div className="flex justify-between text-xs font-mono">
+                          <div className="text-emerald-450 font-bold">{stats.wins} WINS</div>
+                          <div className="text-zinc-650">|</div>
+                          <div className="text-red-400 font-bold">{stats.losses} LOSSES</div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
-          </div>
+          ) : (
+            <div className="glass-panel rounded-2xl p-6 border border-zinc-800/50 text-center py-8 text-zinc-500 text-xs tracking-wider uppercase font-bold">
+              Rivalry meter is only tracked for IPL Franchise matches.
+            </div>
+          )}
 
         </div>
       )}
@@ -412,22 +718,126 @@ export default function HistoryView({ userName, history = [], careerRivalries = 
       {/* SUBTAB 2: SEASON BY SEASON LOGS */}
       {subTab === 'seasons' && (
         <div className="space-y-4">
+          {/* Active Ongoing Season Card */}
+          {(() => {
+            const nextSeasonNum = history.length + 1;
+            const seasonSR = currentSeasonStats.balls > 0 ? ((currentSeasonStats.runs / currentSeasonStats.balls) * 100).toFixed(1) : '0.0';
+            const seasonOvers = currentSeasonStats.ballsBowled ? currentSeasonStats.ballsBowled / 6 : 0;
+            const seasonEcon = seasonOvers > 0 ? (currentSeasonStats.runsConceded / seasonOvers).toFixed(2) : '0.00';
+            const seasonBatAvg = currentSeasonStats.outs > 0 ? (currentSeasonStats.runs / currentSeasonStats.outs).toFixed(1) : (currentSeasonStats.runs > 0 ? currentSeasonStats.runs.toFixed(1) : '-');
+            const seasonBowlAvg = currentSeasonStats.wickets > 0 ? (currentSeasonStats.runsConceded / currentSeasonStats.wickets).toFixed(1) : '-';
+
+            return (
+              <div key="current" className={`glass-panel rounded-xl overflow-hidden flex flex-col lg:flex-row border border-blue-500/30 bg-blue-500/[0.01] hover:border-blue-500/50 transition-colors`}>
+                <div 
+                  className="p-6 lg:w-1/4 flex flex-col justify-center border-b lg:border-b-0 lg:border-r border-zinc-800"
+                  style={{ background: 'linear-gradient(135deg, rgba(59, 130, 246, 0.1), transparent)' }}
+                >
+                  <div className="text-xs tracking-[0.2em] text-blue-400 mb-1 flex items-center gap-1 font-bold uppercase">
+                    <Activity className="w-3 h-3 animate-pulse" /> Season {nextSeasonNum} (Ongoing)
+                  </div>
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="font-black text-xl text-zinc-100" style={{ fontFamily: 'Bebas Neue', letterSpacing: '1px' }}>
+                      {getTeam(userTeam).name}
+                    </span>
+                  </div>
+                </div>
+                
+                <div className="p-6 lg:w-3/4 grid grid-cols-1 xl:grid-cols-5 gap-6">
+                  <div className="xl:col-span-2 space-y-4">
+                    <div className="bg-black/30 rounded-lg p-3 border border-orange-500/20">
+                      <div className="text-[10px] tracking-wider text-orange-500 mb-1 flex items-center gap-1 font-bold">
+                        <Crown className="w-3 h-3" /> ORANGE CAP (LIVE)
+                      </div>
+                      <div className="font-bold text-sm text-zinc-200">{currentOrangeCap.name}</div>
+                      <div className="text-xs text-zinc-400">{currentOrangeCap.runs} runs</div>
+                    </div>
+                    <div className="bg-black/30 rounded-lg p-3 border border-fuchsia-500/20">
+                      <div className="text-[10px] tracking-wider text-fuchsia-400 mb-1 flex items-center gap-1 font-bold">
+                        <Target className="w-3 h-3" /> PURPLE CAP (LIVE)
+                      </div>
+                      <div className="font-bold text-sm text-zinc-200">{currentPurpleCap.name}</div>
+                      <div className="text-xs text-zinc-400">{currentPurpleCap.wickets} wickets</div>
+                    </div>
+                  </div>
+
+                  <div className="xl:col-span-3 bg-black/40 rounded-xl p-5 border border-zinc-800">
+                    <div className={`text-[10px] tracking-wider mb-3 border-b border-zinc-800/50 pb-2 uppercase font-bold flex justify-between items-center ${currentFmt.text}`}>
+                      <span>Your Performance</span>
+                      <span className={`px-2 py-0.5 rounded text-[8px] font-black tracking-widest border uppercase ${currentFmt.badge}`}>
+                        {formatTab === 'IPL' ? 'IPL Franchise' : `${formatTab} International`}
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-3 sm:grid-cols-5 gap-4">
+                      <div>
+                        <div className="text-[10px] text-zinc-500 tracking-wider">RUNS</div>
+                        <div className={`font-mono font-bold text-lg ${currentFmt.text}`}>{currentSeasonStats.runs || 0}</div>
+                      </div>
+                      <div>
+                        <div className="text-[10px] text-zinc-500 tracking-wider">BAT AVG</div>
+                        <div className={`font-mono font-bold text-lg ${currentFmt.text}`}>{seasonBatAvg}</div>
+                      </div>
+                      <div>
+                        <div className="text-[10px] text-zinc-500 tracking-wider">SR</div>
+                        <div className="font-mono font-bold text-zinc-200 text-lg">{seasonSR}</div>
+                      </div>
+                      <div>
+                        <div className="text-[10px] text-zinc-500 tracking-wider">HIGHEST</div>
+                        <div className="font-mono font-bold text-zinc-200 text-sm">{currentSeasonStats.hs || 0}</div>
+                      </div>
+                      <div>
+                        <div className="text-[10px] text-zinc-500 tracking-wider">100/50</div>
+                        <div className="font-mono font-bold text-zinc-200 text-sm">{currentSeasonStats.hundreds || 0}/{currentSeasonStats.fifties || 0}</div>
+                      </div>
+
+                      <div>
+                        <div className="text-[10px] text-zinc-500 tracking-wider">WICKETS</div>
+                        <div className="font-mono font-bold text-fuchsia-400 text-lg">{currentSeasonStats.wickets || 0}</div>
+                      </div>
+                      <div>
+                        <div className="text-[10px] text-zinc-500 tracking-wider">BOWL AVG</div>
+                        <div className="font-mono font-bold text-fuchsia-400 text-lg">{seasonBowlAvg}</div>
+                      </div>
+                      <div>
+                        <div className="text-[10px] text-zinc-500 tracking-wider">ECON</div>
+                        <div className="font-mono font-bold text-zinc-200 text-lg">{seasonEcon}</div>
+                      </div>
+                      <div>
+                        <div className="text-[10px] text-zinc-500 tracking-wider">MATCHES</div>
+                        <div className="font-mono font-bold text-zinc-200 text-sm">{currentSeasonStats.M || 0}</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
+
           {history.length === 0 ? (
             <div className="text-zinc-500 text-sm py-8 text-center glass-panel rounded-2xl">
-              Complete your first season to see historical logs.
+              Complete your first season to see older historical logs.
             </div>
           ) : (
             history.slice().reverse().map(season => {
               const champ = getTeam(season.champion);
-              const s = season.playerStats || {};
+              
+              const s = getStatsForSeason(season, formatTab);
+
               const seasonSR = s.balls > 0 ? ((s.runs / s.balls) * 100).toFixed(1) : (s.sr || '0.0');
               const seasonOvers = s.ballsBowled ? s.ballsBowled / 6 : 0;
               const seasonEcon = seasonOvers > 0 ? (s.runsConceded / seasonOvers).toFixed(2) : (s.econ || '0.00');
               const seasonBatAvg = s.outs > 0 ? (s.runs / s.outs).toFixed(1) : (s.runs > 0 ? s.runs.toFixed(1) : '-');
               const seasonBowlAvg = s.wickets > 0 ? (s.runsConceded / s.wickets).toFixed(1) : '-';
 
+              const cardBorder = {
+                IPL: 'hover:border-amber-500/20',
+                T20: 'hover:border-blue-500/20',
+                ODI: 'hover:border-sky-500/20',
+                TEST: 'hover:border-emerald-500/20'
+              };
+
               return (
-                <div key={season.season} className="glass-panel rounded-xl overflow-hidden flex flex-col lg:flex-row border border-zinc-800/50 hover:border-amber-500/20 transition-colors">
+                <div key={season.season} className={`glass-panel rounded-xl overflow-hidden flex flex-col lg:flex-row border border-zinc-800/50 ${cardBorder[formatTab]} transition-colors`}>
                   <div 
                     className="p-6 lg:w-1/4 flex flex-col justify-center border-b lg:border-b-0 lg:border-r border-zinc-800"
                     style={{ background: `linear-gradient(135deg, ${champ.primary}22, transparent)` }}
@@ -460,17 +870,20 @@ export default function HistoryView({ userName, history = [], careerRivalries = 
                     </div>
 
                     <div className="xl:col-span-3 bg-black/40 rounded-xl p-5 border border-zinc-800">
-                      <div className="text-[10px] tracking-wider text-amber-500/70 mb-3 border-b border-zinc-800/50 pb-2 uppercase font-bold">
-                        Your Performance
+                      <div className={`text-[10px] tracking-wider mb-3 border-b border-zinc-800/50 pb-2 uppercase font-bold flex justify-between items-center ${currentFmt.text}`}>
+                        <span>Your Performance</span>
+                        <span className={`px-2 py-0.5 rounded text-[8px] font-black tracking-widest border uppercase ${currentFmt.badge}`}>
+                          {formatTab === 'IPL' ? 'IPL Franchise' : `${formatTab} International`}
+                        </span>
                       </div>
                       <div className="grid grid-cols-3 sm:grid-cols-5 gap-4">
                         <div>
                           <div className="text-[10px] text-zinc-500 tracking-wider">RUNS</div>
-                          <div className="font-mono font-bold text-amber-400 text-lg">{s.runs || 0}</div>
+                          <div className={`font-mono font-bold text-lg ${currentFmt.text}`}>{s.runs || 0}</div>
                         </div>
                         <div>
                           <div className="text-[10px] text-zinc-500 tracking-wider">BAT AVG</div>
-                          <div className="font-mono font-bold text-amber-400 text-lg">{seasonBatAvg}</div>
+                          <div className={`font-mono font-bold text-lg ${currentFmt.text}`}>{seasonBatAvg}</div>
                         </div>
                         <div>
                           <div className="text-[10px] text-zinc-500 tracking-wider">SR</div>

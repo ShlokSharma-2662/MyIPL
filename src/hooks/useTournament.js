@@ -1,8 +1,10 @@
 import { useState, useMemo, useEffect } from 'react';
-import { buildAllPlayers } from '../data';
+import { buildAllPlayers, ROSTERS } from '../data';
 import { GOD_MODE_MIN, GOD_MODE_MAX, TOSS_FIELD_FIRST_PROB } from '../constants';
 import { simulateMatch, generateSchedule, pickGodModeMatches } from '../simulation';
-import { recalcAll, accumulateMatchStats, computeNRR } from '../stats';
+import { recalcAll, accumulateMatchStats, computeNRR, recalcAllInternational } from '../stats';
+import { generateInternationalSchedule, INTERNATIONAL_ROSTERS, INTERNATIONAL_TEAMS } from '../internationalData';
+import { FORMATS } from '../formats';
 import { LEGACY_HISTORY, LEGACY_RIVALRIES } from '../historyData';
 import { saveStateToFirebase, loadStateFromFirebase, clearFirebaseState } from '../firebase';
 
@@ -61,12 +63,29 @@ export function useTournament() {
   const [unlockedAchievements, setUnlockedAchievements] = useState([]);
   const [fanPopularity, setFanPopularity] = useState(80);
 
+  // Dynamic Expansion Pack RPG states
+  const [playerXP, setPlayerXP] = useState(0);
+  const [userPlayerAttributes, setUserPlayerAttributes] = useState({
+    power: 1, timing: 1, spinDef: 1, paceDef: 1, deathBowl: 1, economy: 1
+  });
+  const [activeSponsor, setActiveSponsor] = useState(null);
+  const [clt20Active, setClt20Active] = useState(false);
+  const [teamHistoricTitles, setTeamHistoricTitles] = useState({
+    CSK: 5, MI: 5, KKR: 3, SRH: 2, DC: 0, RR: 1, PBKS: 0, GT: 1, LSG: 0
+  });
+  const [rosterVersion, setRosterVersion] = useState(0);
+
   // Incremental stats state
   const [teamStats, setTeamStats] = useState({});
   const [allPlayerStats, setAllPlayerStats] = useState({});
   
   const [history, setHistory] = useState(LEGACY_HISTORY);
   const [careerRivalries, setCareerRivalries] = useState(LEGACY_RIVALRIES);
+
+  const [internationalActive, setInternationalActive] = useState(false);
+  const [internationalSchedule, setInternationalSchedule] = useState([]);
+  const [internationalResults, setInternationalResults] = useState([]);
+  const [internationalPlayerStats, setInternationalPlayerStats] = useState({});
 
   useEffect(() => {
     async function init() {
@@ -90,10 +109,40 @@ export function useTournament() {
           setUsedPlayoffGodMode(saved.usedPlayoffGodMode || false);
           
           if (saved.careerRivalries) setCareerRivalries(saved.careerRivalries);
-          if (saved.history) setHistory(saved.history);
+          if (saved.history) {
+            const mergedHistory = saved.history.map(s => {
+              const legacyMatch = LEGACY_HISTORY.find(lh => lh.season === s.season);
+              if (legacyMatch) {
+                return { ...s, formatStats: s.formatStats || legacyMatch.formatStats };
+              }
+              return s;
+            });
+            setHistory(mergedHistory);
+          }
           if (saved.hallOfFame) setHallOfFame(saved.hallOfFame);
           if (saved.unlockedAchievements) setUnlockedAchievements(saved.unlockedAchievements);
           if (saved.fanPopularity !== undefined) setFanPopularity(saved.fanPopularity);
+          
+          if (saved.playerXP !== undefined) setPlayerXP(saved.playerXP);
+          if (saved.userPlayerAttributes) setUserPlayerAttributes(saved.userPlayerAttributes);
+          if (saved.activeSponsor) setActiveSponsor(saved.activeSponsor);
+          if (saved.clt20Active !== undefined) setClt20Active(saved.clt20Active);
+          if (saved.teamHistoricTitles) setTeamHistoricTitles(saved.teamHistoricTitles);
+          
+          if (saved.internationalActive !== undefined) setInternationalActive(saved.internationalActive);
+          if (saved.internationalSchedule) setInternationalSchedule(saved.internationalSchedule);
+          if (saved.internationalResults) setInternationalResults(saved.internationalResults);
+          if (saved.internationalPlayerStats) setInternationalPlayerStats(saved.internationalPlayerStats);
+          
+          if (saved.customRosters) {
+            Object.keys(saved.customRosters).forEach(teamId => {
+              const raw = saved.customRosters[teamId];
+              // Firebase can mangle nested arrays into objects with numeric keys — coerce back to arrays
+              if (Array.isArray(raw)) {
+                ROSTERS[teamId] = raw.map(entry => Array.isArray(entry) ? entry : Object.values(entry));
+              }
+            });
+          }
           
           const allMatches = [
             ...(saved.results || []),
@@ -153,19 +202,79 @@ export function useTournament() {
         final: playoff.final ? { ...playoff.final, inn1: { ...playoff.final.inn1, events: [] }, inn2: { ...playoff.final.inn2, events: [] } } : null,
       };
 
+      const customRosters = {
+        CSK: ROSTERS.CSK,
+        MI: ROSTERS.MI,
+        RCB: ROSTERS.RCB,
+        KKR: ROSTERS.KKR,
+        SRH: ROSTERS.SRH,
+        DC: ROSTERS.DC,
+        RR: ROSTERS.RR,
+        PBKS: ROSTERS.PBKS,
+        GT: ROSTERS.GT,
+        LSG: ROSTERS.LSG
+      };
+      // Sanitize international results to remove commentary events before saving
+      const sanitizedIntResults = (internationalResults || []).map(m => ({
+        ...m,
+        inn1: { ...m.inn1, events: [] },
+        inn2: { ...m.inn2, events: [] },
+        inn3: m.inn3 ? { ...m.inn3, events: [] } : null,
+        inn4: m.inn4 ? { ...m.inn4, events: [] } : null,
+      }));
+
       const stateData = {
         userName, userTeam, tourney, schedule,
         results: sanitizedResults,
-        phase, 
+        phase,
         playoff: sanitizedPlayoff,
-        playoffStep, champion, godModeMatches, usedPlayoffGodMode, history, careerRivalries, hallOfFame, unlockedAchievements, fanPopularity
+        playoffStep, champion, godModeMatches, usedPlayoffGodMode, history, careerRivalries, hallOfFame, unlockedAchievements, fanPopularity,
+        playerXP, userPlayerAttributes, activeSponsor, clt20Active, teamHistoricTitles,
+        customRosters,
+        internationalActive,
+        internationalSchedule,
+        internationalResults: sanitizedIntResults,
+        internationalPlayerStats
       };
+      // Save full state (including nested-array rosters) to localStorage only
       localStorage.setItem(STORAGE_KEY, JSON.stringify(stateData));
-      saveStateToFirebase(stateData);
+      // Firebase doesn't support nested arrays — strip customRosters before sending
+      const { customRosters: _omit, ...firebasePayload } = stateData;
+      saveStateToFirebase(firebasePayload);
     } catch {}
-  }, [hydrated, userName, userTeam, tourney, schedule, results, phase, playoff, playoffStep, champion, godModeMatches, usedPlayoffGodMode, history, careerRivalries, hallOfFame, unlockedAchievements, fanPopularity]);
+  }, [hydrated, userName, userTeam, tourney, schedule, results, phase, playoff, playoffStep, champion, godModeMatches, usedPlayoffGodMode, history, careerRivalries, hallOfFame, unlockedAchievements, fanPopularity, playerXP, userPlayerAttributes, activeSponsor, clt20Active, teamHistoricTitles, rosterVersion, internationalActive, internationalSchedule, internationalResults, internationalPlayerStats]);
 
-  const playersMap = useMemo(() => userName ? buildAllPlayers(userName, userTeam) : {}, [userName, userTeam]);
+  const playersMap = useMemo(() => {
+    if (!userName) return {};
+    const baseMap = buildAllPlayers(userName, userTeam);
+    
+    // Add international rosters to playersMap
+    for (const teamId of Object.keys(INTERNATIONAL_ROSTERS)) {
+      INTERNATIONAL_ROSTERS[teamId].forEach(tup => {
+        const [name, role, batSR, batAvg, bowlSR, bowlEcon] = tup;
+        baseMap[`${teamId}:${name}`] = {
+          name, role, team: teamId,
+          batSR, batAvg,
+          bowls: bowlSR !== null,
+          bowlSR: bowlSR || 0,
+          bowlEcon: bowlEcon || 0,
+        };
+      });
+    }
+
+    const userKey = `USER:${userName}`;
+    if (baseMap[userKey] && userPlayerAttributes) {
+      const { power, timing, spinDef, paceDef, deathBowl, economy } = userPlayerAttributes;
+      
+      baseMap[userKey].batSR = 148 + (power - 1) * 8;
+      baseMap[userKey].batAvg = 35 + (timing - 1) * 5;
+      baseMap[userKey].batAvg += (spinDef - 1) * 1.5 + (paceDef - 1) * 1.5;
+      
+      baseMap[userKey].bowlSR = Math.max(10, 18 - (deathBowl - 1) * 1.5);
+      baseMap[userKey].bowlEcon = Math.max(5.0, 8.2 - (economy - 1) * 0.45);
+    }
+    return baseMap;
+  }, [userName, userTeam, userPlayerAttributes, rosterVersion]);
 
   function startTournament(name, tournamentName, teamId) {
     const sched = generateSchedule();
@@ -208,6 +317,69 @@ export function useTournament() {
       const userKey = `USER:${userName}`;
       const userStats = allPlayerStats[userKey] || { runs: 0, balls: 0, wkts: 0, runsConceded: 0, ballsBowled: 0, outs: 0 };
 
+      const getStatsForFormat = (matches, formatFilter) => {
+        let M = 0;
+        let runs = 0;
+        let outs = 0;
+        let balls = 0;
+        let HS = 0;
+        let hundreds = 0;
+        let fifties = 0;
+        let wkts = 0;
+        let ballsBowled = 0;
+        let runsConceded = 0;
+
+        (matches || []).forEach(m => {
+          if (formatFilter && m.format !== formatFilter) return;
+
+          const userBatEntries = [
+            ...m.inn1.battersCard, 
+            ...m.inn2.battersCard, 
+            ...(m.inn3?.battersCard || []), 
+            ...(m.inn4?.battersCard || [])
+          ].filter(b => b.player.isUser);
+
+          const userBowlEntries = [
+            ...m.inn1.bowlersCard, 
+            ...m.inn2.bowlersCard, 
+            ...(m.inn3?.bowlersCard || []), 
+            ...(m.inn4?.bowlersCard || [])
+          ].filter(b => b.player.isUser);
+
+          if (userBatEntries.length > 0 || userBowlEntries.length > 0) {
+            M++;
+            
+            userBatEntries.forEach(b => {
+              runs += b.runs;
+              if (b.out) outs++;
+              balls += b.balls;
+              if (b.runs > HS) HS = b.runs;
+              if (b.runs >= 100) hundreds++;
+              else if (b.runs >= 50) fifties++;
+            });
+
+            userBowlEntries.forEach(b => {
+              wkts += b.wickets;
+              ballsBowled += b.balls || 0;
+              runsConceded += b.runs || 0;
+            });
+          }
+        });
+
+        return {
+          M,
+          runs,
+          balls,
+          outs,
+          hs: HS,
+          hundreds,
+          fifties,
+          wickets: wkts,
+          ballsBowled,
+          runsConceded
+        };
+      };
+
       const newEntry = {
         season: currentSeason,
         champion,
@@ -224,6 +396,23 @@ export function useTournament() {
           wickets: userStats.wkts || 0, 
           runsConceded: userStats.runsConceded || 0,
           ballsBowled: userStats.ballsBowled || 0
+        },
+        formatStats: {
+          IPL: {
+            M: userStats.M || 0,
+            runs: userStats.runs || 0, 
+            balls: userStats.balls || 0,
+            fifties: userStats.fifties || 0,
+            hundreds: userStats.hundreds || 0,
+            hs: userStats.HS || 0,
+            outs: userStats.outs || 0,
+            wickets: userStats.wkts || 0, 
+            runsConceded: userStats.runsConceded || 0,
+            ballsBowled: userStats.ballsBowled || 0
+          },
+          T20I: getStatsForFormat(internationalResults, 'T20'),
+          ODI: getStatsForFormat(internationalResults, 'ODI'),
+          TEST: getStatsForFormat(internationalResults, 'TEST')
         }
       };
       nextHistory = [...history, newEntry];
@@ -399,9 +588,65 @@ export function useTournament() {
     setFanPopularity(p => Math.max(10, Math.min(100, Math.round(p + delta))));
   }
 
+  function checkSponsorProgress(m) {
+    if (!activeSponsor) return;
+    let nextSponsor = { ...activeSponsor };
+    let completed = false;
+    
+    const userBat = [...m.inn1.battersCard, ...m.inn2.battersCard].find(b => b.player.isUser);
+    const userBowl = [...m.inn1.bowlersCard, ...m.inn2.bowlersCard].find(b => b.player.isUser);
+    
+    if (activeSponsor.id === 'apex') {
+      if (userBat) {
+        nextSponsor.progress = (nextSponsor.progress || 0) + userBat.runs;
+        if (nextSponsor.progress >= 150) completed = true;
+      }
+    } else if (activeSponsor.id === 'aura') {
+      if (userBowl) {
+        nextSponsor.progress = (nextSponsor.progress || 0) + userBowl.wickets;
+        if (nextSponsor.progress >= 10) completed = true;
+      }
+    } else if (activeSponsor.id === 'neon') {
+      const won = m.winner === userTeam;
+      if (won) {
+        nextSponsor.progress = (nextSponsor.progress || 0) + 1;
+        if (nextSponsor.progress >= 8) completed = true;
+      }
+    }
+    
+    if (completed && !nextSponsor.claimed) {
+      nextSponsor.claimed = true;
+      setPlayerXP(x => x + 250); 
+      setFanPopularity(p => Math.min(100, p + 10)); 
+    }
+    setActiveSponsor(nextSponsor);
+  }
+
+  function startChampionsLeague() {
+    setClt20Active(true);
+    setPhase('league');
+    setTab('table');
+    setTourney('CLT20 Champions League');
+    setResults([]);
+    
+    const cltTeams = ['CSK', 'S6', 'TKR', 'LS', 'JS', 'AA'];
+    const cltSched = [];
+    for (let i = 0; i < cltTeams.length; i++) {
+      for (let j = i + 1; j < cltTeams.length; j++) {
+        cltSched.push({ home: cltTeams[i], away: cltTeams[j] });
+      }
+    }
+    setSchedule(cltSched);
+    
+    const empty = recalcAll([], userName, userTeam);
+    setTeamStats(empty.teamStats);
+    setAllPlayerStats(empty.playerStats);
+  }
+
   function commitLeagueMatch(match) {
     applyMatchStats(match);
     updatePopularityAfterMatch(match);
+    checkSponsorProgress(match);
     setResults(r => {
       const newResults = [...r, match];
       if (newResults.length >= schedule.length) setPhase('playoffs');
@@ -436,7 +681,72 @@ export function useTournament() {
     return { batch, alerts };
   }
 
+  function startInternationalSeason() {
+    setInternationalActive(true);
+    setTourney("International Season (Rest of Year)");
+    setPhase("league");
+    setTab("international");
+    setInternationalResults([]);
+    setInternationalPlayerStats({});
+    const intSched = generateInternationalSchedule();
+    setInternationalSchedule(intSched);
+  }
+
+  function completeInternationalSeason() {
+    setInternationalActive(false);
+    reset();
+  }
+
+  function commitInternationalMatch(match) {
+    setInternationalResults(r => {
+      const newResults = [...r, match];
+      const parsed = recalcAllInternational(newResults, userName);
+      setInternationalPlayerStats(parsed);
+      
+      if (newResults.length >= internationalSchedule.length) {
+        setPhase('done');
+        setTab('international');
+      }
+      return newResults;
+    });
+  }
+
+  function simNextInternational() {
+    if (internationalResults.length >= internationalSchedule.length) return;
+    const idx = internationalResults.length;
+    const next = internationalSchedule[idx];
+    const { tossWinner, tossDecision } = rollToss(next.home, next.away);
+
+    setActivePreview({
+      home: next.home,
+      away: next.away,
+      idx,
+      label: next.label,
+      type: 'international',
+      tossWinner,
+      tossDecision,
+      format: next.format,
+      godMode: false
+    });
+  }
+
+  function simulateInternationalBatch(startIdx, count) {
+    const batch = [];
+    for (let i = 0; i < count; i++) {
+      const idx = startIdx + i;
+      const next = internationalSchedule[idx];
+      const matchConfig = FORMATS[next.format];
+      const match = simulateMatch(next.home, next.away, userName, 'IND', playersMap, next.label, null, null, false, {}, {}, matchConfig, INTERNATIONAL_ROSTERS);
+      batch.push(match);
+    }
+    return batch;
+  }
+
   function simNext() {
+    if (internationalActive) {
+      simNextInternational();
+      return;
+    }
     if (results.length >= schedule.length) return;
     const idx = results.length;
     const next = schedule[idx];
@@ -466,7 +776,64 @@ export function useTournament() {
     }
   }
 
+  function simMyMatch() {
+    if (internationalActive) {
+      simNext();
+      return;
+    }
+    if (results.length >= schedule.length) return;
+
+    // Find the next unplayed match involving the user's team
+    let nextUserIdx = -1;
+    for (let i = results.length; i < schedule.length; i++) {
+      if (schedule[i].home === userTeam || schedule[i].away === userTeam) {
+        nextUserIdx = i;
+        break;
+      }
+    }
+    if (nextUserIdx === -1) return;
+
+    // Batch-sim all matches before the user's match
+    if (nextUserIdx > results.length) {
+      const count = nextUserIdx - results.length;
+      const { batch, alerts } = simulateLeagueBatch(results.length, count);
+      setResults(r => {
+        const all = [...r, ...batch];
+        if (all.length >= schedule.length) setPhase('playoffs');
+        return all;
+      });
+      if (alerts.length > 0) setGodAlerts(a => [...a, ...alerts]);
+    }
+
+    // Open the preview for the user's match
+    const next = schedule[nextUserIdx];
+    const { tossWinner, tossDecision } = rollToss(next.home, next.away);
+    const godMode = godModeMatches.includes(nextUserIdx);
+    setActivePreview({
+      home: next.home,
+      away: next.away,
+      idx: nextUserIdx,
+      label: 'League',
+      type: 'league',
+      tossWinner,
+      tossDecision,
+      godMode
+    });
+  }
+
   function sim10() {
+    if (internationalActive) {
+      const count = Math.min(10, internationalSchedule.length - internationalResults.length);
+      const batch = simulateInternationalBatch(internationalResults.length, count);
+      setInternationalResults(r => {
+        const all = [...r, ...batch];
+        const parsed = recalcAllInternational(all, userName);
+        setInternationalPlayerStats(parsed);
+        if (all.length >= internationalSchedule.length) setPhase('done');
+        return all;
+      });
+      return;
+    }
     const count = Math.min(10, schedule.length - results.length);
     const { batch, alerts } = simulateLeagueBatch(results.length, count);
     setResults(r => {
@@ -489,12 +856,25 @@ export function useTournament() {
       tossWinner: preview.tossWinner,
       tossDecision: preview.tossDecision,
       label: preview.label,
-      type: 'league',
+      type: preview.type, // 'league' or 'international'
+      format: preview.format,
       godMode: preview.godMode
     });
   }
 
   function simAll() {
+    if (internationalActive) {
+      const count = internationalSchedule.length - internationalResults.length;
+      const batch = simulateInternationalBatch(internationalResults.length, count);
+      setInternationalResults(r => {
+        const all = [...r, ...batch];
+        const parsed = recalcAllInternational(all, userName);
+        setInternationalPlayerStats(parsed);
+        setPhase('done');
+        return all;
+      });
+      return;
+    }
     const count = schedule.length - results.length;
     const { batch, alerts } = simulateLeagueBatch(results.length, count);
     setResults(r => {
@@ -520,6 +900,10 @@ export function useTournament() {
     } else if (step === 3) {
       setPlayoff(p => ({ ...p, final: match }));
       setChampion(match.winner);
+      setTeamHistoricTitles(prev => ({
+        ...prev,
+        [match.winner]: (prev[match.winner] || 0) + 1
+      }));
       setPhase('done');
       setTab('playoffs');
     }
@@ -586,16 +970,17 @@ export function useTournament() {
       tossWinner: preview.tossWinner,
       tossDecision: preview.tossDecision,
       label: preview.label,
-      type: 'playoff',
+      type: preview.type || 'playoff',
       step: preview.step,
-      godMode: preview.godMode
+      godMode: preview.godMode,
+      format: preview.format
     });
   }
 
   function completeToss(decision) {
     if (!pendingToss || !pendingTactics) return;
     
-    const { home, away, tossWinner, label, type, step, godMode } = pendingToss;
+    const { home, away, tossWinner, label, type, step, godMode, format } = pendingToss;
     const { tactics, isLiveWatch } = pendingTactics;
 
     // Clear states
@@ -603,18 +988,28 @@ export function useTournament() {
     setPendingTactics(null);
 
     // Apply tactics only to the user team
-    const homeTactics = home === userTeam ? tactics : {};
-    const awayTactics = away === userTeam ? tactics : {};
+    const isInternational = type === 'international' || internationalActive;
+    const effectiveUserTeam = isInternational ? 'IND' : userTeam;
+    const homeTactics = home === effectiveUserTeam ? tactics : {};
+    const awayTactics = away === effectiveUserTeam ? tactics : {};
 
     // Simulate Match
-    const match = simulateMatch(home, away, userName, userTeam, playersMap, label, tossWinner, decision, !!godMode, homeTactics, awayTactics);
+    let match;
+    if (isInternational) {
+      const matchConfig = FORMATS[format || 'T20'];
+      match = simulateMatch(home, away, userName, 'IND', playersMap, label, tossWinner, decision, false, homeTactics, awayTactics, matchConfig, INTERNATIONAL_ROSTERS);
+    } else {
+      match = simulateMatch(home, away, userName, userTeam, playersMap, label, tossWinner, decision, !!godMode, homeTactics, awayTactics);
+    }
 
     if (isLiveWatch) {
       // Launch ball-by-ball viewer
-      setLiveMatch({ match, type, step });
+      setLiveMatch({ match, type, step, format });
     } else {
       // Instant Sim commits directly
-      if (type === 'league') {
+      if (type === 'international') {
+        commitInternationalMatch(match);
+      } else if (type === 'league') {
         commitLeagueMatch(match);
         if (godMode) {
           const idx = results.length;
@@ -634,7 +1029,9 @@ export function useTournament() {
     const { type, step } = liveMatch;
     setLiveMatch(null);
 
-    if (type === 'league') {
+    if (type === 'international') {
+      commitInternationalMatch(playedMatch);
+    } else if (type === 'league') {
       commitLeagueMatch(playedMatch);
       if (playedMatch.godMode) {
         const idx = results.length;
@@ -648,19 +1045,56 @@ export function useTournament() {
     }
   }
 
+  function executeTrade(targetTeamId, targetPlayerName, userPlayerName) {
+    const userRoster = ROSTERS[userTeam] || [];
+    const targetRoster = ROSTERS[targetTeamId] || [];
+
+    const userIdx = userRoster.findIndex(p => p[0] === userPlayerName);
+    const targetIdx = targetRoster.findIndex(p => p[0] === targetPlayerName);
+
+    if (userIdx === -1 || targetIdx === -1) return false;
+
+    // Perform swap in global ROSTERS structure
+    const userPlayerTuple = [...userRoster[userIdx]];
+    const targetPlayerTuple = [...targetRoster[targetIdx]];
+
+    userRoster[userIdx] = targetPlayerTuple;
+    targetRoster[targetIdx] = userPlayerTuple;
+
+    ROSTERS[userTeam] = userRoster;
+    ROSTERS[targetTeamId] = targetRoster;
+
+    setRosterVersion(v => v + 1);
+
+    // Recalculate stats dynamically for the updated lineup
+    const allMatches = [
+      ...results,
+      ...[playoff.q1, playoff.elim, playoff.q2, playoff.final].filter(Boolean),
+    ];
+    const recalculated = recalcAll(allMatches, userName, userTeam);
+    setTeamStats(recalculated.teamStats);
+    setAllPlayerStats(recalculated.playerStats);
+
+    return true;
+  }
+
   return {
     state: {
       userName, userTeam, tourney, schedule, results, phase, tab, playoff, playoffStep, champion,
       openMatch, pendingToss, godModeMatches, godAlerts, hydrated,
       teamStats, allPlayerStats, history, careerRivalries, usedPlayoffGodMode,
-      activePreview, liveMatch, hallOfFame, unlockedAchievements, fanPopularity
+      activePreview, liveMatch, hallOfFame, unlockedAchievements, fanPopularity,
+      playerXP, userPlayerAttributes, activeSponsor, clt20Active, teamHistoricTitles,
+      internationalActive, internationalSchedule, internationalResults, internationalPlayerStats
     },
     setters: {
-      setTab, setOpenMatch, setGodAlerts, setActivePreview, setLiveMatch
+      setTab, setOpenMatch, setGodAlerts, setActivePreview, setLiveMatch,
+      setPlayerXP, setUserPlayerAttributes, setActiveSponsor, setClt20Active, setTeamHistoricTitles, setFanPopularity
     },
     actions: {
-      startTournament, reset, simNext, sim10, simAll, simPlayoff, completeToss,
-      executeLeagueMatch, executePlayoffMatch, completeLiveMatch
+      startTournament, reset, simNext, simMyMatch, sim10, simAll, simPlayoff, completeToss,
+      executeLeagueMatch, executePlayoffMatch, completeLiveMatch, executeTrade, startChampionsLeague,
+      startInternationalSeason, completeInternationalSeason
     }
   };
 }

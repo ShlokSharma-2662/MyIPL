@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Play, Pause, FastForward, Trophy, Zap, AlertTriangle, ShieldCheck, Flame } from 'lucide-react';
 import TeamBadge from './TeamBadge';
 import { TEAMS } from '../data';
+import { INTERNATIONAL_TEAMS } from '../internationalData';
 
 const SPEEDS = [
   { label: 'SLOW', ms: 1600 },
@@ -13,19 +14,38 @@ const SPEEDS = [
 export default function LiveMatchViewer({ match, userTeam = 'CSK', onComplete }) {
   if (!match) return null;
 
-  const home = TEAMS.find(t => t.id === match.home);
-  const away = TEAMS.find(t => t.id === match.away);
+  const home = TEAMS.find(t => t.id === match.home) || INTERNATIONAL_TEAMS.find(t => t.id === match.home);
+  const away = TEAMS.find(t => t.id === match.away) || INTERNATIONAL_TEAMS.find(t => t.id === match.away);
   
-  // Combine all events sequentially: inn1 events + inn2 events
+  const format = match.format || 'T20';
+  const isTest = format === 'TEST';
+  const maxBalls = format === 'ODI' ? 300 : 120;
+
+  // Combine all events sequentially: inn1 + inn2 + inn3 + inn4
   const allEvents = useMemo(() => {
     const inn1WithInnings = match.inn1.events.map(e => ({ ...e, innings: 1 }));
     const inn2WithInnings = match.inn2.events.map(e => ({ ...e, innings: 2 }));
-    return [...inn1WithInnings, ...inn2WithInnings];
+    const inn3WithInnings = (match.inn3?.events || []).map(e => ({ ...e, innings: 3 }));
+    const inn4WithInnings = (match.inn4?.events || []).map(e => ({ ...e, innings: 4 }));
+    return [...inn1WithInnings, ...inn2WithInnings, ...inn3WithInnings, ...inn4WithInnings];
   }, [match]);
 
-  const [currentIdx, setCurrentIdx] = useState(0);
+  // Compute indices of notable events to skip dot balls / singles during Test matches
+  const notableIndices = useMemo(() => {
+    const indices = [];
+    allEvents.forEach((e, idx) => {
+      if (!isTest || e.isNotable || idx === allEvents.length - 1) {
+        indices.push(idx);
+      }
+    });
+    return indices;
+  }, [allEvents, isTest]);
+
+  const [activeNotableIdx, setActiveNotableIdx] = useState(0);
+  const currentIdx = notableIndices[activeNotableIdx] || 0;
+
   const [isPlaying, setIsPlaying] = useState(true);
-  const [speedIdx, setSpeedIdx] = useState(1); // Default NORMAL (750ms)
+  const [speedIdx, setSpeedIdx] = useState(isTest ? 3 : 1); // Default to BLITZ speed for Test summaries, NORMAL for T20/ODI
 
   const comEndRef = useRef(null);
   const timerRef = useRef(null);
@@ -44,10 +64,10 @@ export default function LiveMatchViewer({ match, userTeam = 'CSK', onComplete })
   useEffect(() => {
     if (timerRef.current) clearInterval(timerRef.current);
     
-    if (isPlaying && currentIdx < allEvents.length - 1) {
+    if (isPlaying && activeNotableIdx < notableIndices.length - 1) {
       timerRef.current = setInterval(() => {
-        setCurrentIdx(prev => {
-          if (prev >= allEvents.length - 1) {
+        setActiveNotableIdx(prev => {
+          if (prev >= notableIndices.length - 1) {
             setIsPlaying(false);
             if (timerRef.current) clearInterval(timerRef.current);
             return prev;
@@ -60,12 +80,14 @@ export default function LiveMatchViewer({ match, userTeam = 'CSK', onComplete })
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
     };
-  }, [isPlaying, currentIdx, currentSpeed, allEvents]);
+  }, [isPlaying, activeNotableIdx, currentSpeed, notableIndices]);
 
   // Compute live match state dynamically by accumulating events up to currentIdx
   const liveStats = useMemo(() => {
     let inn1Score = { runs: 0, wickets: 0, overs: '0.0', balls: 0, extras: 0 };
     let inn2Score = { runs: 0, wickets: 0, overs: '0.0', balls: 0, extras: 0 };
+    let inn3Score = { runs: 0, wickets: 0, overs: '0.0', balls: 0, extras: 0 };
+    let inn4Score = { runs: 0, wickets: 0, overs: '0.0', balls: 0, extras: 0 };
     
     const batters = {}; // name -> { runs, balls, fours, sixes, out }
     const bowlers = {}; // name -> { runs, balls, wickets }
@@ -103,110 +125,76 @@ export default function LiveMatchViewer({ match, userTeam = 'CSK', onComplete })
 
       // Track active batting team
       const isUserBatting = (e.innings === 1 && match.battingFirst === userTeam) || 
-                            (e.innings === 2 && match.battingFirst !== userTeam);
+                            (e.innings === 2 && match.battingFirst !== userTeam) ||
+                            (e.innings === 3 && match.battingFirst === userTeam) ||
+                            (e.innings === 4 && match.battingFirst !== userTeam);
 
-      if (e.innings === 1) {
-        if (e.isExtra) {
-          inn1Score.runs += e.runs;
-          inn1Score.extras += e.runs;
-          bowlers[e.bowler].runs += e.runs;
-          partnershipRuns += e.runs;
+      let curInningsScore;
+      if (e.innings === 1) curInningsScore = inn1Score;
+      else if (e.innings === 2) curInningsScore = inn2Score;
+      else if (e.innings === 3) curInningsScore = inn3Score;
+      else curInningsScore = inn4Score;
 
-          // Extra shift
-          if (isUserBatting) crowdSupport = Math.min(95, crowdSupport + 1);
-          else crowdSupport = Math.max(5, crowdSupport - 1);
-        } else {
-          inn1Score.runs += e.runs;
-          inn1Score.balls++;
-          batters[e.striker].runs += e.runs;
-          batters[e.striker].balls++;
-          if (e.runs === 6) batters[e.striker].sixes++;
-          if (e.runs === 4) batters[e.striker].fours++;
-          
-          bowlers[e.bowler].runs += e.runs;
-          bowlers[e.bowler].balls++;
-          
-          partnershipRuns += e.runs;
-          partnershipBalls++;
+      if (e.isExtra) {
+        curInningsScore.runs += e.runs;
+        curInningsScore.extras += e.runs;
+        bowlers[e.bowler].runs += e.runs;
+        partnershipRuns += e.runs;
 
-          if (e.isWicket) {
-            inn1Score.wickets++;
-            batters[e.striker].out = true;
-            bowlers[e.bowler].wickets++;
-            partnershipRuns = 0;
-            partnershipBalls = 0;
-
-            // Wicket shift (heavy loss of support for batting side)
-            if (isUserBatting) crowdSupport = Math.max(5, crowdSupport - 8);
-            else crowdSupport = Math.min(95, crowdSupport + 8);
-          } else {
-            // Boundary shifts
-            if (e.runs === 6) {
-              if (isUserBatting) crowdSupport = Math.min(95, crowdSupport + 4);
-              else crowdSupport = Math.max(5, crowdSupport - 4);
-            } else if (e.runs === 4) {
-              if (isUserBatting) crowdSupport = Math.min(95, crowdSupport + 2.5);
-              else crowdSupport = Math.max(5, crowdSupport - 2.5);
-            } else if (e.runs === 0) {
-              // Dot is good for bowling side
-              if (!isUserBatting) crowdSupport = Math.min(95, crowdSupport + 1);
-              else crowdSupport = Math.max(5, crowdSupport - 1);
-            }
-          }
-        }
-        inn1Score.overs = `${Math.floor(inn1Score.balls / 6)}.${inn1Score.balls % 6}`;
+        // Extra shift
+        if (isUserBatting) crowdSupport = Math.min(95, crowdSupport + 1);
+        else crowdSupport = Math.max(5, crowdSupport - 1);
       } else {
-        if (e.isExtra) {
-          inn2Score.runs += e.runs;
-          inn2Score.extras += e.runs;
-          bowlers[e.bowler].runs += e.runs;
-          partnershipRuns += e.runs;
+        curInningsScore.runs += e.runs;
+        curInningsScore.balls++;
+        batters[e.striker].runs += e.runs;
+        batters[e.striker].balls++;
+        if (e.runs === 6) batters[e.striker].sixes++;
+        if (e.runs === 4) batters[e.striker].fours++;
+        
+        bowlers[e.bowler].runs += e.runs;
+        bowlers[e.bowler].balls++;
+        
+        partnershipRuns += e.runs;
+        partnershipBalls++;
 
-          if (isUserBatting) crowdSupport = Math.min(95, crowdSupport + 1);
-          else crowdSupport = Math.max(5, crowdSupport - 1);
+        if (e.isWicket) {
+          curInningsScore.wickets++;
+          batters[e.striker].out = true;
+          bowlers[e.bowler].wickets++;
+          partnershipRuns = 0;
+          partnershipBalls = 0;
+
+          // Wicket shift (heavy loss of support for batting side)
+          if (isUserBatting) crowdSupport = Math.max(5, crowdSupport - 8);
+          else crowdSupport = Math.min(95, crowdSupport + 8);
         } else {
-          inn2Score.runs += e.runs;
-          inn2Score.balls++;
-          batters[e.striker].runs += e.runs;
-          batters[e.striker].balls++;
-          if (e.runs === 6) batters[e.striker].sixes++;
-          if (e.runs === 4) batters[e.striker].fours++;
-          
-          bowlers[e.bowler].runs += e.runs;
-          bowlers[e.bowler].balls++;
-
-          partnershipRuns += e.runs;
-          partnershipBalls++;
-
-          if (e.isWicket) {
-            inn2Score.wickets++;
-            batters[e.striker].out = true;
-            bowlers[e.bowler].wickets++;
-            partnershipRuns = 0;
-            partnershipBalls = 0;
-
-            if (isUserBatting) crowdSupport = Math.max(5, crowdSupport - 8);
-            else crowdSupport = Math.min(95, crowdSupport + 8);
-          } else {
-            if (e.runs === 6) {
-              if (isUserBatting) crowdSupport = Math.min(95, crowdSupport + 4);
-              else crowdSupport = Math.max(5, crowdSupport - 4);
-            } else if (e.runs === 4) {
-              if (isUserBatting) crowdSupport = Math.min(95, crowdSupport + 2.5);
-              else crowdSupport = Math.max(5, crowdSupport - 2.5);
-            } else if (e.runs === 0) {
-              if (!isUserBatting) crowdSupport = Math.min(95, crowdSupport + 1);
-              else crowdSupport = Math.max(5, crowdSupport - 1);
-            }
+          // Boundary shifts
+          if (e.runs === 6) {
+            if (isUserBatting) crowdSupport = Math.min(95, crowdSupport + 4);
+            else crowdSupport = Math.max(5, crowdSupport - 4);
+          } else if (e.runs === 4) {
+            if (isUserBatting) crowdSupport = Math.min(95, crowdSupport + 2.5);
+            else crowdSupport = Math.max(5, crowdSupport - 2.5);
+          } else if (e.runs === 0) {
+            // Dot is good for bowling side
+            if (!isUserBatting) crowdSupport = Math.min(95, crowdSupport + 1);
+            else crowdSupport = Math.max(5, crowdSupport - 1);
           }
         }
-        inn2Score.overs = `${Math.floor(inn2Score.balls / 6)}.${inn2Score.balls % 6}`;
       }
     }
+    
+    inn1Score.overs = `${Math.floor(inn1Score.balls / 6)}.${inn1Score.balls % 6}`;
+    inn2Score.overs = `${Math.floor(inn2Score.balls / 6)}.${inn2Score.balls % 6}`;
+    inn3Score.overs = `${Math.floor(inn3Score.balls / 6)}.${inn3Score.balls % 6}`;
+    inn4Score.overs = `${Math.floor(inn4Score.balls / 6)}.${inn4Score.balls % 6}`;
 
     return {
       inn1Score,
       inn2Score,
+      inn3Score,
+      inn4Score,
       batters,
       bowlers,
       activeStriker,
@@ -219,9 +207,11 @@ export default function LiveMatchViewer({ match, userTeam = 'CSK', onComplete })
     };
   }, [allEvents, currentIdx, userTeam, match]);
 
+  const isInternational = INTERNATIONAL_TEAMS.some(t => t.id === match.home || t.id === match.away);
+
   const handleSkip = () => {
     setIsPlaying(false);
-    setCurrentIdx(allEvents.length - 1);
+    setActiveNotableIdx(notableIndices.length - 1);
   };
 
   const handleFinish = () => {
@@ -229,7 +219,7 @@ export default function LiveMatchViewer({ match, userTeam = 'CSK', onComplete })
   };
 
   const currentEvent = allEvents[currentIdx];
-  const isFinished = currentIdx >= allEvents.length - 1;
+  const isFinished = activeNotableIdx >= notableIndices.length - 1;
 
   // Star involvement metadata from the current simulated ball
   const isStrikerStar = currentEvent?.isStrikerStar;
@@ -237,17 +227,28 @@ export default function LiveMatchViewer({ match, userTeam = 'CSK', onComplete })
   const isStarActive = isStrikerStar || isBowlerStar;
 
   // Innings-specific metadata
-  const targetRuns = liveStats.inn1Score.runs + 1;
+  const targetRuns = isTest 
+    ? (liveStats.inn1Score.runs + (liveStats.inn3Score?.runs || 0)) - liveStats.inn2Score.runs + 1
+    : liveStats.inn1Score.runs + 1;
+
   const battingFirstTeam = match.battingFirst === match.home ? home : away;
   const battingSecondTeam = match.battingFirst === match.home ? away : home;
 
-  const currentInningsTeam = liveStats.activeInnings === 1 ? battingFirstTeam : battingSecondTeam;
-  const bowlingTeam = liveStats.activeInnings === 1 ? battingSecondTeam : battingFirstTeam;
+  const currentInningsTeam = (liveStats.activeInnings === 1 || liveStats.activeInnings === 3) 
+    ? battingFirstTeam 
+    : battingSecondTeam;
+
+  const bowlingTeam = (liveStats.activeInnings === 1 || liveStats.activeInnings === 3) 
+    ? battingSecondTeam 
+    : battingFirstTeam;
 
   // Chase calculations
-  const runsNeeded = targetRuns - liveStats.inn2Score.runs;
-  const ballsRemaining = 120 - liveStats.inn2Score.balls;
-  const reqRunRate = ballsRemaining > 0 ? ((runsNeeded / ballsRemaining) * 6).toFixed(2) : '0.00';
+  const runsNeeded = isTest 
+    ? (liveStats.activeInnings === 4 ? targetRuns - liveStats.inn4Score.runs : 0)
+    : targetRuns - liveStats.inn2Score.runs;
+
+  const ballsRemaining = maxBalls - (liveStats.activeInnings === 1 ? liveStats.inn1Score.balls : liveStats.inn2Score.balls);
+  const reqRunRate = (!isTest && ballsRemaining > 0) ? ((runsNeeded / ballsRemaining) * 6).toFixed(2) : '0.00';
 
   // Home and Away Crowd percentages
   const homeSupport = match.home === userTeam ? liveStats.crowdSupport : 100 - liveStats.crowdSupport;
@@ -259,8 +260,159 @@ export default function LiveMatchViewer({ match, userTeam = 'CSK', onComplete })
   const showStrikerStarAlert = isStrikerStar && strikerBalls === 1;
   const showBowlerStarAlert = isBowlerStar && bowlerBalls === 1;
 
+  const activeInningsScore = 
+    liveStats.activeInnings === 1 ? liveStats.inn1Score :
+    liveStats.activeInnings === 2 ? liveStats.inn2Score :
+    liveStats.activeInnings === 3 ? liveStats.inn3Score :
+    liveStats.inn4Score;
+
+  const renderHeaderScore = () => {
+    if (isTest) {
+      const showInn3 = liveStats.activeInnings >= 3;
+      const showInn2 = liveStats.activeInnings >= 2;
+      const showInn4 = liveStats.activeInnings >= 4;
+
+      return (
+        <div className="flex items-center gap-3 bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-2 font-mono text-xs font-semibold flex-wrap">
+          <div className="flex items-center gap-1">
+            <span style={{ color: battingFirstTeam.primary }}>{battingFirstTeam.short}</span>
+            <span className="text-zinc-200">{liveStats.inn1Score.runs}/{liveStats.inn1Score.wickets}</span>
+            {showInn3 && (
+              <>
+                <span className="text-zinc-500 font-normal">&amp;</span>
+                <span className={liveStats.activeInnings === 3 ? "text-emerald-400 font-bold" : "text-zinc-200"}>
+                  {liveStats.inn3Score.runs}/{liveStats.inn3Score.wickets}
+                  <span className="text-zinc-500 text-[10px] font-normal"> ({liveStats.inn3Score.overs})</span>
+                </span>
+              </>
+            )}
+            {!showInn3 && <span className="text-zinc-500 text-[10px]">({liveStats.inn1Score.overs})</span>}
+          </div>
+
+          <div className="text-zinc-700">|</div>
+
+          <div className="flex items-center gap-1">
+            <span style={{ color: battingSecondTeam.primary }}>{battingSecondTeam.short}</span>
+            {showInn2 ? (
+              <>
+                <span className={(liveStats.activeInnings === 2) ? "text-emerald-400 font-bold" : "text-zinc-200"}>
+                  {liveStats.inn2Score.runs}/{liveStats.inn2Score.wickets}
+                  {!showInn4 && <span className="text-zinc-500 text-[10px] font-normal"> ({liveStats.inn2Score.overs})</span>}
+                </span>
+                {showInn4 && (
+                  <>
+                    <span className="text-zinc-500 font-normal">&amp;</span>
+                    <span className="text-emerald-400 font-bold">
+                      {liveStats.inn4Score.runs}/{liveStats.inn4Score.wickets}
+                      <span className="text-zinc-500 text-[10px] font-normal"> ({liveStats.inn4Score.overs})</span>
+                    </span>
+                  </>
+                )}
+              </>
+            ) : (
+              <span className="text-zinc-500 font-normal">-</span>
+            )}
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <div className="flex items-center gap-3 bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-2 font-mono text-xs font-semibold">
+        <div className="flex items-center gap-1">
+          <span style={{ color: battingFirstTeam.primary }}>{battingFirstTeam.short}</span>
+          <span className="text-zinc-200">{liveStats.inn1Score.runs}/{liveStats.inn1Score.wickets}</span>
+          <span className="text-zinc-500 text-[10px]">({liveStats.inn1Score.overs})</span>
+        </div>
+        {liveStats.activeInnings === 2 && (
+          <>
+            <div className="text-zinc-700">|</div>
+            <div className="flex items-center gap-1 animate-fade-in">
+              <span style={{ color: battingSecondTeam.primary }}>{battingSecondTeam.short}</span>
+              <span className="text-emerald-400 font-bold">{liveStats.inn2Score.runs}/{liveStats.inn2Score.wickets}</span>
+              <span className="text-zinc-500 text-[10px]">({liveStats.inn2Score.overs})</span>
+            </div>
+          </>
+        )}
+      </div>
+    );
+  };
+
+  const renderChaseHelper = () => {
+    if (isTest) {
+      if (liveStats.activeInnings === 1) {
+        return (
+          <div className="mt-4 bg-zinc-800/40 border border-zinc-700/50 px-5 py-2.5 rounded-xl text-center w-full max-w-md relative z-10">
+            <span className="text-xs tracking-wider text-zinc-400 font-bold uppercase font-mono block">
+              Innings 1: Setting first innings total
+            </span>
+          </div>
+        );
+      }
+      if (liveStats.activeInnings === 2) {
+        const diff = liveStats.inn1Score.runs - liveStats.inn2Score.runs;
+        return (
+          <div className={`mt-4 ${diff >= 0 ? 'bg-blue-500/10 border border-blue-500/25' : 'bg-emerald-500/10 border border-emerald-500/25'} px-5 py-2.5 rounded-xl text-center w-full max-w-md relative z-10`}>
+            <span className={`text-xs tracking-wider ${diff >= 0 ? 'text-blue-450' : 'text-emerald-400'} font-bold uppercase font-mono block`}>
+              {diff >= 0 
+                ? `${battingSecondTeam.short} trails by ${diff} runs`
+                : `${battingSecondTeam.short} leads by ${Math.abs(diff)} runs`
+              }
+            </span>
+          </div>
+        );
+      }
+      if (liveStats.activeInnings === 3) {
+        const diff = (liveStats.inn1Score.runs + liveStats.inn3Score.runs) - liveStats.inn2Score.runs;
+        return (
+          <div className={`mt-4 ${diff >= 0 ? 'bg-blue-500/10 border border-blue-500/25' : 'bg-red-500/10 border border-red-500/25'} px-5 py-2.5 rounded-xl text-center w-full max-w-md relative z-10`}>
+            <span className={`text-xs tracking-wider ${diff >= 0 ? 'text-blue-450' : 'text-red-400'} font-bold uppercase font-mono block`}>
+              {diff >= 0 
+                ? `${battingFirstTeam.short} leads by ${diff} runs`
+                : `${battingFirstTeam.short} trails by ${Math.abs(diff)} runs (Innings Defeat Threat)`
+              }
+            </span>
+          </div>
+        );
+      }
+      if (liveStats.activeInnings === 4) {
+        const target = (liveStats.inn1Score.runs + liveStats.inn3Score.runs) - liveStats.inn2Score.runs + 1;
+        const runsToWin = target - liveStats.inn4Score.runs;
+        return (
+          <div className="mt-4 bg-amber-500/10 border border-amber-500/25 px-5 py-2.5 rounded-xl text-center w-full max-w-md relative z-10">
+            <span className="text-xs tracking-wider text-amber-400 font-bold uppercase font-mono block">
+              {battingSecondTeam.short} needs {runsToWin} runs to win
+            </span>
+          </div>
+        );
+      }
+      return null;
+    }
+
+    if (liveStats.activeInnings === 2) {
+      return (
+        <div className="mt-4 bg-amber-500/10 border border-amber-500/25 px-5 py-2.5 rounded-xl text-center w-full animate-pulse max-w-md relative z-10 shadow-inner">
+          <span className="text-xs tracking-wider text-amber-400 font-bold uppercase font-mono block">
+            {battingSecondTeam.short} needs {runsNeeded} runs off {ballsRemaining} balls
+          </span>
+          <span className="text-[10px] font-mono text-zinc-400 mt-1 block">
+            Required Run Rate: {reqRunRate} RPO
+          </span>
+        </div>
+      );
+    }
+
+    return (
+      <div className="mt-4 bg-zinc-850 border border-zinc-800 px-5 py-2.5 rounded-xl text-center w-full max-w-md relative z-10">
+        <span className="text-xs tracking-wider text-zinc-400 font-bold uppercase font-mono block">
+          {battingFirstTeam.short} is batting first
+        </span>
+      </div>
+    );
+  };
+
   return (
-    <div className="fixed inset-0 bg-black/90 backdrop-blur-lg z-50 flex flex-col font-sans text-zinc-100 animate-fade-in">
+    <div className={`fixed inset-0 bg-gradient-to-b ${isInternational ? 'from-blue-950/90 via-black/95 to-zinc-950/95' : 'from-zinc-950/95 via-black/95 to-zinc-950/95'} backdrop-blur-lg z-50 flex flex-col font-sans text-zinc-100 animate-fade-in`}>
       
       {/* Dynamic Star Entrance Alert Overlay (Cinematic Flash Overlay) */}
       {(showStrikerStarAlert || showBowlerStarAlert) && (
@@ -291,32 +443,16 @@ export default function LiveMatchViewer({ match, userTeam = 'CSK', onComplete })
       {/* Top Bar / Header */}
       <header className="border-b border-zinc-800 bg-zinc-950/80 px-6 py-4 flex items-center justify-between shadow-md">
         <div className="flex items-center gap-3">
-          <Trophy className="w-5 h-5 text-amber-500 animate-bounce" />
+          <Trophy className={`w-5 h-5 ${isInternational ? 'text-blue-400' : 'text-amber-500'} animate-bounce`} />
           <div>
-            <div className="text-[10px] tracking-[0.25em] text-amber-400 font-bold uppercase">{match.label} LIVE</div>
+            <div className={`text-[10px] tracking-[0.25em] ${isInternational ? 'text-blue-400' : 'text-amber-400'} font-bold uppercase`}>{match.label} LIVE</div>
             <h1 className="text-lg font-black tracking-tight" style={{ fontFamily: 'Bebas Neue' }}>
               {home.name} vs {away.name}
             </h1>
           </div>
         </div>
 
-        <div className="flex items-center gap-3 bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-2 font-mono text-xs font-semibold">
-          <div className="flex items-center gap-1">
-            <span style={{ color: battingFirstTeam.primary }}>{battingFirstTeam.short}</span>
-            <span className="text-zinc-200">{liveStats.inn1Score.runs}/{liveStats.inn1Score.wickets}</span>
-            <span className="text-zinc-500 text-[10px]">({liveStats.inn1Score.overs})</span>
-          </div>
-          {liveStats.activeInnings === 2 && (
-            <>
-              <div className="text-zinc-700">|</div>
-              <div className="flex items-center gap-1 animate-fade-in">
-                <span style={{ color: battingSecondTeam.primary }}>{battingSecondTeam.short}</span>
-                <span className="text-emerald-400 font-bold">{liveStats.inn2Score.runs}/{liveStats.inn2Score.wickets}</span>
-                <span className="text-zinc-500 text-[10px]">({liveStats.inn2Score.overs})</span>
-              </div>
-            </>
-          )}
-        </div>
+        {renderHeaderScore()}
       </header>
 
       {/* Main Simulation Panel */}
@@ -334,16 +470,16 @@ export default function LiveMatchViewer({ match, userTeam = 'CSK', onComplete })
 
             <div className="flex items-baseline gap-2 relative z-10">
               <span className="text-6xl font-black tracking-tighter text-zinc-100 font-mono">
-                {liveStats.activeInnings === 1 ? liveStats.inn1Score.runs : liveStats.inn2Score.runs}
+                {activeInningsScore.runs}
               </span>
               <span className="text-3xl text-zinc-500 font-black">/</span>
               <span className="text-4xl font-bold text-zinc-400 font-mono">
-                {liveStats.activeInnings === 1 ? liveStats.inn1Score.wickets : liveStats.inn2Score.wickets}
+                {activeInningsScore.wickets}
               </span>
             </div>
 
             <div className="text-sm font-mono text-zinc-400 mt-2 font-semibold">
-              Overs: {liveStats.activeInnings === 1 ? liveStats.inn1Score.overs : liveStats.inn2Score.overs} / 20.0
+              Overs: {activeInningsScore.overs} {isTest ? '' : `/ ${(maxBalls / 6).toFixed(1)}`}
             </div>
 
             {/* Stadium Noise / Fan Meter Gauge */}
@@ -381,16 +517,7 @@ export default function LiveMatchViewer({ match, userTeam = 'CSK', onComplete })
             </div>
 
             {/* Chase Target Helper Panel */}
-            {liveStats.activeInnings === 2 && (
-              <div className="mt-4 bg-amber-500/10 border border-amber-500/25 px-5 py-2.5 rounded-xl text-center w-full animate-pulse max-w-md relative z-10 shadow-inner">
-                <span className="text-xs tracking-wider text-amber-400 font-bold uppercase font-mono block">
-                  {battingSecondTeam.short} needs {runsNeeded} runs off {ballsRemaining} balls
-                </span>
-                <span className="text-[10px] font-mono text-zinc-400 mt-1 block">
-                  Required Run Rate: {reqRunRate} RPO
-                </span>
-              </div>
-            )}
+            {renderChaseHelper()}
           </div>
 
           {/* Batsmen & Bowlers Active Cards */}
@@ -486,7 +613,7 @@ export default function LiveMatchViewer({ match, userTeam = 'CSK', onComplete })
 
               <div className="mt-auto pt-2 border-t border-zinc-800/50 flex justify-between items-center text-[10px] font-mono text-zinc-500">
                 <span>Bowler Economy Target</span>
-                <span>Max 4 overs per bowler</span>
+                <span>{isTest ? 'No overs limit per bowler' : `Max ${format === 'ODI' ? 10 : 4} overs per bowler`}</span>
               </div>
             </div>
 
@@ -497,11 +624,17 @@ export default function LiveMatchViewer({ match, userTeam = 'CSK', onComplete })
         <div className="lg:col-span-1 flex flex-col bg-zinc-950 border border-zinc-800 rounded-2xl overflow-hidden shadow-inner max-h-[500px] lg:max-h-none">
           <div className="px-5 py-4 border-b border-zinc-800/50 bg-black/40 flex items-center justify-between">
             <span className="text-xs font-black tracking-widest text-zinc-400 uppercase">Live Commentary</span>
-            <span className="text-[10px] font-mono text-zinc-500">{currentIdx + 1} / {allEvents.length} deliveries</span>
+            <span className="text-[10px] font-mono text-zinc-500">
+              {isTest ? activeNotableIdx + 1 : currentIdx + 1} / {isTest ? notableIndices.length : allEvents.length} updates
+            </span>
           </div>
 
           <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4 custom-scrollbar">
-            {allEvents.slice(0, currentIdx + 1).map((e, idx) => {
+            {(isTest 
+              ? notableIndices.slice(0, activeNotableIdx + 1).map(idx => allEvents[idx]) 
+              : allEvents.slice(0, currentIdx + 1)
+            ).map((e, idx) => {
+              if (!e) return null;
               const isSix = e.runs === 6;
               const isFour = e.runs === 4;
               const isWkt = e.isWicket;
@@ -510,13 +643,15 @@ export default function LiveMatchViewer({ match, userTeam = 'CSK', onComplete })
               return (
                 <div key={idx} className={`text-xs border-b border-zinc-900 pb-3 flex flex-col gap-1.5 animate-fade-in relative overflow-hidden rounded-lg p-2 transition-all duration-300 ${isBallStar ? 'bg-amber-500/[0.02] border-l-2 border-amber-500/40 pl-2' : ''}`}>
                   <div className="flex items-center gap-2">
-                    <span className="font-mono text-zinc-500 font-semibold bg-zinc-900/60 px-1.5 py-0.5 rounded text-[10px]">{e.overNum}</span>
+                    <span className="font-mono text-zinc-500 font-semibold bg-zinc-900/60 px-1.5 py-0.5 rounded text-[10px]">
+                      {isTest ? `Innings ${e.innings} • Over ${e.overNum}` : e.overNum}
+                    </span>
                     {isWkt && <span className="bg-red-500/20 text-red-400 border border-red-500/30 text-[8px] font-black tracking-wider px-1.5 py-0.5 rounded uppercase">WICKET</span>}
                     {isSix && <span className="bg-amber-400/20 text-amber-400 border border-amber-500/30 text-[8px] font-black tracking-wider px-1.5 py-0.5 rounded uppercase font-bold">SIX!</span>}
                     {isFour && <span className="bg-emerald-400/20 text-emerald-400 border border-emerald-500/30 text-[8px] font-black tracking-wider px-1.5 py-0.5 rounded uppercase">FOUR</span>}
-                    {e.isExtra && <span className="bg-zinc-800 text-zinc-400 text-[8px] font-bold px-1.5 py-0.5 rounded uppercase">WIDE</span>}
+                    {e.isExtra && <span className="bg-zinc-800 text-zinc-400 text-[8px] font-bold px-1.5 py-0.5 rounded uppercase">EXTRA</span>}
                     {isBallStar && (
-                      <span className="text-[8px] bg-amber-400/10 text-amber-450 font-black border border-amber-500/20 px-1 py-0.5 rounded flex items-center gap-0.5 uppercase tracking-wide">
+                      <span className="text-[8px] bg-amber-400/10 text-amber-455 font-black border border-amber-500/20 px-1 py-0.5 rounded flex items-center gap-0.5 uppercase tracking-wide">
                         ★ {e.isStrikerStar ? 'Star Batter' : 'Star Bowler'}
                       </span>
                     )}
@@ -544,7 +679,7 @@ export default function LiveMatchViewer({ match, userTeam = 'CSK', onComplete })
             <button
               key={idx}
               onClick={() => setSpeedIdx(idx)}
-              className={`text-[10px] font-mono font-bold px-2.5 py-1 rounded transition-all ${speedIdx === idx ? 'bg-amber-500 text-black shadow-md' : 'text-zinc-400 hover:text-white hover:bg-white/5'}`}
+              className={`text-[10px] font-mono font-bold px-2.5 py-1 rounded transition-all ${speedIdx === idx ? (isInternational ? 'bg-blue-600 text-white shadow-md' : 'bg-amber-500 text-black shadow-md') : 'text-zinc-400 hover:text-white hover:bg-white/5'}`}
             >
               {s.label}
             </button>
@@ -556,7 +691,7 @@ export default function LiveMatchViewer({ match, userTeam = 'CSK', onComplete })
           <button
             onClick={() => setIsPlaying(!isPlaying)}
             disabled={isFinished}
-            className="w-12 h-12 bg-white hover:bg-zinc-200 text-black flex items-center justify-center rounded-full shadow-lg disabled:opacity-50 transition-all hover:scale-105 active:scale-95 animate-pulse"
+            className={`w-12 h-12 bg-white hover:bg-zinc-200 text-black flex items-center justify-center rounded-full shadow-lg disabled:opacity-50 transition-all hover:scale-105 active:scale-95 ${isPlaying ? '' : 'animate-pulse'}`}
           >
             {isPlaying ? <Pause className="w-5 h-5 fill-black" /> : <Play className="w-5 h-5 fill-black" />}
           </button>
@@ -576,7 +711,7 @@ export default function LiveMatchViewer({ match, userTeam = 'CSK', onComplete })
           {isFinished ? (
             <button
               onClick={handleFinish}
-              className="bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-400 hover:to-emerald-500 text-black font-bold px-6 py-3 rounded-xl tracking-wider text-xs shadow-lg shadow-emerald-500/20 animate-bounce transition-all hover:-translate-y-0.5"
+              className={`bg-gradient-to-r ${isInternational ? 'from-blue-500 to-blue-600 hover:from-blue-400 hover:to-blue-500 text-white shadow-blue-500/20' : 'from-emerald-500 to-emerald-600 hover:from-emerald-400 hover:to-emerald-500 text-black shadow-emerald-500/20'} font-bold px-6 py-3 rounded-xl tracking-wider text-xs shadow-lg animate-bounce transition-all hover:-translate-y-0.5`}
             >
               CONTINUE →
             </button>
