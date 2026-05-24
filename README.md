@@ -38,6 +38,39 @@ Built with **React 19 + Vite 8 + Tailwind v4**.
 
 ---
 
+## Ultimate RPG & Career Expansion
+
+### 🇮🇳 Year-Round International Career (Rest of the Year)
+- **Bilateral Campaigns:** Represent your national team **India (IND)** in a 13-match multi-format tour against Australia, England, West Indies, South Africa, Pakistan, and New Zealand.
+- **Format-parameterized Engine:** Simulated fixtures are format-aware:
+  - **T20I:** 20 overs per side, 4 overs per bowler.
+  - **ODI:** 50 overs per side, 10 overs per bowler.
+  - **Test Matches:** Realistic 4-innings structure enforcing a 5-day limit (2700 balls) with draws, declarations, follow-ons, and innings victories.
+- **India Blue Accent reskin:** The application UI transitions to a premium deep blue accent design when playing the international tour.
+
+### 📊 Format-Differentiated Profiles & History
+- **Profile Tabs:** Track separate profiles and performance records for IPL, T20I, ODI, and Test matches.
+- **History format selectors:** Toggle the History tab between IPL Franchise, T20I, ODI, and Test logs.
+- **Deterministic Fallback & Live Aggregation:** Automatically merges the ongoing season's stats into career totals in real-time, displaying a "Live Ongoing" season card at the top, and dynamically generates deterministic format stats for older legacy saves.
+
+### 🔄 Marquee Transfer Window
+- **Role-Locked Player Trades:** Swap players of matching roles (Batsmen, Bowlers, All-rounders, Wicketkeepers) to build your ultimate squad.
+- **Fan Hype & Rating Balance Constraints:** Signing marquee players (like Virat Kohli or MS Dhoni) requires high Fan Popularity (up to 90%), and trades must satisfy a ±10 player rating tolerance to prevent unbalanced rosters.
+
+### 🧬 RPG Training Nets & Hexagonal Skill Web
+- **Hexagonal Skill Web:** Spend earned XP to upgrade 6 major attributes (Power Hitting, Placement, Pace Defense, Spin Defense, Death Bowling, and Economy) plotted on a interactive SVG mesh, boosting match simulation metrics.
+- **Interactive 3-Ball Batting Nets:** Play a mini-game selecting batting responses (Lofted Blast, Cover Drive, Defensive Block) against pacers or spinners to earn bonus XP.
+
+### 👔 Corporate Sponsors & Boardroom Challenges
+- **Corporate Partnerships:** Unlock Bronze, Silver, and Gold sponsor contracts based on your Fan Hype.
+- **Seasonal Milestones:** Complete unique sponsor challenges (like scoring 150 runs or taking 10 wickets) to secure extra rewards and display active branding in the boardroom dashboard.
+
+### 🌌 Champions League T20
+- **Neon-Cyan Theme Transition:** Finish in the top 2 of the IPL playoff to qualify for the global CLT20 tournament, reskinning the interface into an electric cyberpunk theme.
+- **Global Cup:** Face elite T20 clubs like Sydney Sixers and Trinbago Knight Riders in a high-stakes championship bracket.
+
+---
+
 ## Project Structure
 
 ```
