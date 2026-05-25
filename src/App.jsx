@@ -25,9 +25,6 @@ import InternationalView from './components/InternationalView';
 
 // Expansion Pack RPG Views
 import AllTeamsView from './components/AllTeamsView';
-import TransfersView from './components/TransfersView';
-import TrainingView from './components/TrainingView';
-import BoardroomView from './components/BoardroomView';
 
 function MainApp({ user }) {
   const {
@@ -36,16 +33,16 @@ function MainApp({ user }) {
       openMatch, pendingToss, godModeMatches, godAlerts, hydrated,
       teamStats, allPlayerStats, history, careerRivalries,
       activePreview, liveMatch, hallOfFame, unlockedAchievements, fanPopularity,
-      playerXP, userPlayerAttributes, activeSponsor, clt20Active, teamHistoricTitles,
+      clt20Active, teamHistoricTitles,
       internationalActive, internationalSchedule, internationalResults, internationalPlayerStats
     },
     setters: {
       setTab, setOpenMatch, setGodAlerts, setActivePreview,
-      setPlayerXP, setUserPlayerAttributes, setActiveSponsor, setClt20Active, setTeamHistoricTitles, setFanPopularity
+      setClt20Active, setTeamHistoricTitles, setFanPopularity
     },
     actions: {
       startTournament, reset, simNext, simMyMatch, sim10, simAll, simPlayoff, completeToss,
-      executeLeagueMatch, executePlayoffMatch, completeLiveMatch, executeTrade, startChampionsLeague,
+      executeLeagueMatch, executePlayoffMatch, completeLiveMatch, startChampionsLeague,
       startInternationalSeason, completeInternationalSeason
     }
   } = useTournament();
@@ -64,6 +61,13 @@ function MainApp({ user }) {
       setTab(internationalActive ? 'international' : 'playoffs');
     }
   }, [phase, internationalActive, setTab]); 
+
+  // Redirect deprecated tabs from old saved sessions.
+  useEffect(() => {
+    if (tab === 'transfers' || tab === 'training' || tab === 'boardroom') {
+      setTab(internationalActive ? 'international' : 'table');
+    }
+  }, [tab, internationalActive, setTab]);
 
   if (!hydrated) return null;
 
@@ -208,9 +212,6 @@ function MainApp({ user }) {
               />
             )}
             {tab === 'teams' && <AllTeamsView state={{ teamHistoricTitles, teamStats, userTeam, results, history, champion }} />}
-            {tab === 'transfers' && <TransfersView state={{ userTeam, fanPopularity }} actions={{ executeTrade }} />}
-            {tab === 'training' && <TrainingView state={{ playerXP, userPlayerAttributes, userName }} setters={{ setPlayerXP, setUserPlayerAttributes }} />}
-            {tab === 'boardroom' && <BoardroomView state={{ activeSponsor, fanPopularity, allPlayerStats, results, userName }} setters={{ setActiveSponsor }} />}
             {tab === 'playoffs' && <PlayoffsView playoff={playoff} onOpen={setOpenMatch} champion={champion} />}
             {tab === 'history' && (
               <HistoryView

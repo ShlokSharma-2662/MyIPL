@@ -362,7 +362,7 @@ export default function MyProfile({
             <p className="text-xs text-zinc-400 max-w-sm mt-0.5 leading-relaxed">
               {profileTab === 'IPL'
                 ? "Your opening scorelines and derby wins dynamically drive your team's overall brand base and fan hype rating!"
-                : "Representing India! Build your global reputation across different formats to unlock new boardroom sponsorship deals."
+                : "Representing India! Build your global reputation across different formats and climb your legacy charts."
               }
             </p>
           </div>

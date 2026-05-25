@@ -1,11 +1,10 @@
 import React from 'react';
-import { Trophy, User, BarChart3, Calendar, Crown, BookOpen, Shield, ArrowLeftRight, Target, Briefcase, Globe } from 'lucide-react';
+import { Trophy, User, BarChart3, Calendar, Crown, BookOpen, Shield, Globe } from 'lucide-react';
 
 export default function TabNav({ tab, setTab, clt20Active = false, internationalActive = false }) {
   const tabs = internationalActive
     ? [
         { id: 'international', label: 'International', mobileLabel: 'Intl', icon: Globe },
-        { id: 'training', label: 'Nets RPG', mobileLabel: 'Nets', icon: Target },
         { id: 'me', label: 'My Profile', mobileLabel: 'Profile', icon: User },
         { id: 'history', label: 'History', mobileLabel: 'History', icon: BookOpen },
       ]
@@ -15,9 +14,6 @@ export default function TabNav({ tab, setTab, clt20Active = false, international
         { id: 'stats', label: 'Orange / Purple', mobileLabel: 'Leaders', icon: Crown },
         { id: 'me', label: 'My Profile', mobileLabel: 'Profile', icon: User },
         { id: 'teams', label: 'All Teams', mobileLabel: 'Teams', icon: Shield },
-        { id: 'transfers', label: 'Transfers', mobileLabel: 'Deals', icon: ArrowLeftRight },
-        { id: 'training', label: 'Nets RPG', mobileLabel: 'Nets', icon: Target },
-        { id: 'boardroom', label: 'Boardroom', mobileLabel: 'Board', icon: Briefcase },
         { id: 'history', label: 'History', mobileLabel: 'History', icon: BookOpen },
         { id: 'playoffs', label: 'Playoffs', mobileLabel: 'Playoffs', icon: Trophy },
       ];

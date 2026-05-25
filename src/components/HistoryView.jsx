@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { Trophy, Crown, Star, Target, ShieldAlert, Award, Calendar, Flame, Activity } from 'lucide-react';
 import { TEAMS } from '../data';
+import IPLCareerGraph from './IPLCareerGraph';
 
 const ACH_METADATA = [
   {
@@ -317,6 +318,37 @@ export default function HistoryView({
   const careerSRNum = parseFloat(careerSR) || 0;
   const userCareerRating = careerBatAvgNum * (careerSRNum / 100);
 
+  const iplCareerSeries = useMemo(() => {
+    const sortedHistory = [...(history || [])].sort((a, b) => (a.season || 0) - (b.season || 0));
+    const completed = sortedHistory.map((seasonEntry) => {
+      const stats = getStatsForSeason(seasonEntry, 'IPL');
+      const batAvg = (stats.outs || 0) > 0 ? (stats.runs || 0) / stats.outs : 0;
+      return {
+        season: seasonEntry.season,
+        label: `S${seasonEntry.season}`,
+        runs: stats.runs || 0,
+        wickets: stats.wickets || 0,
+        batAvg,
+      };
+    });
+
+    const currentSeasonNo = (history?.length || 0) + 1;
+    const currentBatAvg = (currentSeasonStats.outs || 0) > 0
+      ? (currentSeasonStats.runs || 0) / currentSeasonStats.outs
+      : 0;
+
+    return [
+      ...completed,
+      {
+        season: currentSeasonNo,
+        label: `S${currentSeasonNo}*`,
+        runs: currentSeasonStats.runs || 0,
+        wickets: currentSeasonStats.wickets || 0,
+        batAvg: currentBatAvg,
+      },
+    ];
+  }, [history, currentSeasonStats]);
+
   return (
     <div className="space-y-6 animate-fade-in">
       {/* Format Selector Tabs */}
@@ -396,6 +428,8 @@ export default function HistoryView({
           </div>
         </div>
       </div>
+
+      {formatTab === 'IPL' && <IPLCareerGraph series={iplCareerSeries} />}
 
       {/* Sub Navigation Tabs */}
       <div className="flex border-b border-zinc-800">
