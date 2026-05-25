@@ -1,8 +1,8 @@
-import React from 'react';
 import { TEAMS } from '../data';
+import { INTERNATIONAL_TEAMS } from '../internationalData';
 
 export default function TeamBadge({ teamId, size = 'md' }) {
-  const t = TEAMS.find(x => x.id === teamId);
+  const t = TEAMS.find(x => x.id === teamId) || INTERNATIONAL_TEAMS.find(x => x.id === teamId);
   if (!t) return null;
   const sz = size === 'sm' ? 'w-7 h-7 text-[10px]' : size === 'lg' ? 'w-12 h-12 text-sm' : 'w-9 h-9 text-xs';
   return (

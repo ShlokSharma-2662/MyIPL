@@ -189,12 +189,12 @@ export function buildAllPlayers(userName, userTeam) {
 export function getLineup(teamId, userName, userTeam, playersMap) {
   if (teamId === userTeam && userName) {
     const lineup = [playersMap[`USER:${userName}`]];
-    ROSTERS[userTeam].forEach(tup => {
+    (ROSTERS[userTeam] || []).forEach(tup => {
       lineup.push(playersMap[`${userTeam}:${tup[0]}`]);
     });
     return lineup;
   }
-  return ROSTERS[teamId].map(tup => playersMap[`${teamId}:${tup[0]}`]);
+  return (ROSTERS[teamId] || []).map(tup => playersMap[`${teamId}:${tup[0]}`]);
 }
 
 export function playerKey(p) {

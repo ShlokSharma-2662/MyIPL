@@ -25,9 +25,11 @@ const AwardCard = ({ title, icon: Icon, colorClass, borderClass, playerStat, pri
   );
 };
 
-export default function SeasonSummary({ champion, allPlayerStats, userName, tourney, onReset }) {
+export default function SeasonSummary({ champion, allPlayerStats, userName, tourney, onReset, playoff, userTeam, startChampionsLeague, clt20Active = false, startInternationalSeason }) {
   const cardRef = useRef(null);
   if (!champion) return null;
+
+  const qualifiedForCLT20 = !clt20Active && playoff && playoff.final && (playoff.final.home === userTeam || playoff.final.away === userTeam);
 
   const championTeam = TEAMS.find(t => t.id === champion);
   const me = allPlayerStats[`USER:${userName}`];
@@ -144,7 +146,7 @@ ${me ? `\n👤 ${userName}: ${me.runs} runs @ SR ${meSR} | ${me.wkts} wickets @ 
           </div>
         )}
 
-        <div className="flex gap-3 relative z-10 justify-center">
+        <div className="flex flex-wrap gap-3 relative z-10 justify-center">
           <button
             onClick={onShare}
             className="bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-white font-bold px-5 py-2.5 rounded-lg tracking-wider text-xs flex items-center gap-2 transition-all hover:-translate-y-0.5"
@@ -157,6 +159,22 @@ ${me ? `\n👤 ${userName}: ${me.runs} runs @ SR ${meSR} | ${me.wkts} wickets @ 
           >
             <RotateCcw className="w-3.5 h-3.5" /> NEW SEASON
           </button>
+          {startInternationalSeason && (
+            <button
+              onClick={startInternationalSeason}
+              className="bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-400 hover:to-indigo-500 text-white font-bold px-5 py-2.5 rounded-lg tracking-wider text-xs flex items-center gap-2 transition-all hover:-translate-y-0.5 shadow-lg shadow-blue-500/20 border border-blue-400/20"
+            >
+              🚀 START INTERNATIONAL SEASON
+            </button>
+          )}
+          {qualifiedForCLT20 && (
+            <button
+              onClick={startChampionsLeague}
+              className="bg-gradient-to-r from-cyan-500 to-cyan-600 hover:from-cyan-400 hover:to-cyan-500 text-slate-950 font-black px-5 py-2.5 rounded-lg tracking-wider text-xs flex items-center gap-2 transition-all hover:-translate-y-0.5 shadow-lg shadow-cyan-500/35 border border-cyan-400/25 animate-pulse"
+            >
+              🚀 ENTER CHAMPIONS LEAGUE
+            </button>
+          )}
         </div>
       </div>
     </div>

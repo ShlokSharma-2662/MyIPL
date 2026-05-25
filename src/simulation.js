@@ -1,4 +1,5 @@
 import { TEAMS, getLineup, playerKey } from './data';
+import { FORMATS } from './formats';
 import {
   MAX_BALLS, TOSS_FIELD_FIRST_PROB, MAX_BALLS_PER_BOWLER, MAX_ACTIVE_BOWLERS,
   POWERPLAY_BALLS, IMPACT_WICKET_THRESHOLD, FORM_MIN, FORM_MAX, LEAGUE_MATCHES_PER_TEAM,
@@ -21,6 +22,64 @@ export function shuffle(arr) {
   return a;
 }
 
+// Dynamic Star Rating Calculator
+export function calculatePlayerRating(player) {
+  if (!player) return 0;
+  
+  // Calculate Batting Rating: Average * (Strike Rate / 100)
+  const batRating = player.batAvg * (player.batSR / 100);
+  
+  // Calculate Bowling Rating: (100 / Strike Rate) * (10 / Economy) * 10
+  let bowlRating = 0;
+  if (player.bowls && player.bowlSR > 0 && player.bowlEcon > 0) {
+    bowlRating = (100 / player.bowlSR) * (10 / player.bowlEcon) * 10;
+  }
+  
+  if (player.role === 'BAT' || player.role === 'WK') {
+    return batRating;
+  } else if (player.role === 'BOWL') {
+    return bowlRating;
+  } else {
+    // All-rounder: combine both but prioritize their stronger suit
+    return Math.max(batRating, bowlRating) + Math.min(batRating, bowlRating) * 0.5;
+  }
+}
+
+// Find designated Star Player for a team
+export function getStarPlayerForTeam(teamId, userName, userTeam, playersMap, rostersSource = null) {
+  const customRosters = rostersSource || {};
+  
+  // Inline lineup builder that matches getLineup but respects rostersSource
+  const getLineupLocal = (tId) => {
+    if (tId === userTeam && userName) {
+      const lineup = [playersMap[`USER:${userName}`]];
+      const ros = customRosters[userTeam] || [];
+      ros.forEach(tup => {
+        if (playersMap[`${userTeam}:${tup[0]}`]) {
+          lineup.push(playersMap[`${userTeam}:${tup[0]}`]);
+        }
+      });
+      return lineup;
+    }
+    const ros = customRosters[tId] || [];
+    return ros.map(tup => playersMap[`${tId}:${tup[0]}`]).filter(Boolean);
+  };
+
+  const lineup = rostersSource ? getLineupLocal(teamId) : getLineup(teamId, userName, userTeam, playersMap);
+  let starPlayer = null;
+  let maxRating = -1;
+  
+  for (const p of lineup) {
+    if (!p) continue;
+    const rating = calculatePlayerRating(p);
+    if (rating > maxRating) {
+      maxRating = rating;
+      starPlayer = p;
+    }
+  }
+  return starPlayer;
+}
+
 // Generate per-match form factors per player.
 // User player is always at peak (1.0) — others get random form between FORM_MIN..FORM_MAX.
 function generateFormFactors(...lineups) {
@@ -36,10 +95,116 @@ function generateFormFactors(...lineups) {
 }
 
 // ============================================================
+// SIMULATION HELPERS
+// ============================================================
+// Helper to identify spinners vs pacers based on franchise/international rosters
+export function isSpinner(playerName) {
+  const spinners = [
+    'Jadeja', 'Ashwin', 'Moeen', 'Rachin', 'Chawla', 'Kartikeya', 'Maxwell', 
+    'Dagar', 'Narine', 'Suyash', 'Chakaravarthy', 'Abhishek Sharma', 
+    'Shahbaz', 'Markande', 'Axar', 'Kuldeep', 'Chahal', 'Brar', 
+    'Rashid', 'Noor', 'Sai Kishore', 'Krunal', 'Bishnoi', 'Zampa', 'Maharaj', 'Shadab', 'Imad', 'Abrar'
+  ];
+  return spinners.some(s => playerName.includes(s));
+}
+
+// Procedural T20 live commentary generator
+function generateCommentary(strikerName, bowlerName, runScored, isWicket, wicketType, isExtra) {
+  if (isExtra) {
+    return `${bowlerName} sprays this down the leg side, wicket-keeper dives but it's a wide delivery. Extra run.`;
+  }
+  if (isWicket) {
+    if (wicketType === 'bowled') {
+      return `OUT! BOWLED HIM! A magnificent delivery from ${bowlerName} breaches the defense of ${strikerName}! The off-stump is cartwheeling!`;
+    }
+    if (wicketType === 'lbw') {
+      return `OUT! PLUMB! ${strikerName} plays across the line, hit on the pad. Big appeal and the finger goes up! Excellent bowling from ${bowlerName}.`;
+    }
+    const catchPhrases = [
+      `OUT! In the air... and taken! ${strikerName} goes for the big hit off ${bowlerName} but is caught cleanly at deep mid-wicket.`,
+      `OUT! Edged and caught! ${strikerName} gets a thick outside edge off ${bowlerName} and the wicketkeeper makes no mistake.`,
+      `OUT! Caught at long-on! ${strikerName} fails to time this off ${bowlerName}, sending a simple catch to the fielder on the boundary.`,
+      `OUT! What a catch! ${strikerName} drives ${bowlerName} hard, but the fielder at extra cover dives to take a sensational catch!`
+    ];
+    return pick(catchPhrases);
+  }
+  if (runScored === 6) {
+    const sixPhrases = [
+      `${strikerName} launches ${bowlerName} over long-on! That is massive, into the second tier! SIX!`,
+      `BOOM! ${strikerName} connects beautifully and dispatches ${bowlerName} deep into the stands! SENSATIONAL SIX!`,
+      `Incredible timing! ${strikerName} dances down the pitch and lofts ${bowlerName} high over extra cover for SIX!`,
+      `Short ball from ${bowlerName}, and ${strikerName} pulls it over fine leg! It sailed way over the boundary for a flat SIX!`
+    ];
+    return pick(sixPhrases);
+  }
+  if (runScored === 4) {
+    const fourPhrases = [
+      `${strikerName} finds the gap! Delights the crowd with a gorgeous cover drive off ${bowlerName} for FOUR!`,
+      `Shot! ${strikerName} pulls ${bowlerName} through square leg. The fielder chases in vain, FOUR runs!`,
+      `Edged but safe! ${strikerName} gets a thick outside edge past slip, and it races away to the boundary off ${bowlerName} for FOUR!`,
+      `Flicked off the pads! ${strikerName} showing class, placing ${bowlerName} through mid-wicket for a elegant FOUR!`
+    ];
+    return pick(fourPhrases);
+  }
+  if (runScored === 2 || runScored === 3) {
+    return `${strikerName} pushes ${bowlerName} into the deep gap and sprints hard. Excellent running to complete ${runScored} runs!`;
+  }
+  if (runScored === 1) {
+    const singlePhrases = [
+      `${strikerName} nudges ${bowlerName} down to third man for a quick single, rotating the strike.`,
+      `${strikerName} tucks this delivery from ${bowlerName} to square leg for a run.`,
+      `Direct hit would have been close! ${strikerName} taps ${bowlerName} to mid-off and scampers through for a single.`
+    ];
+    return pick(singlePhrases);
+  }
+  const dotPhrases = [
+    `No run. ${strikerName} defends ${bowlerName} back to the bowler.`,
+    `Beaten! ${strikerName} tries to cut ${bowlerName} but is beaten by the extra bounce.`,
+    `Good length from ${bowlerName}, ${strikerName} plays it defensively to cover.`,
+    `Dot ball! ${strikerName} swings hard at ${bowlerName} but makes no contact. Excellent delivery.`
+  ];
+  return pick(dotPhrases);
+}
+
+// ============================================================
 // SIMULATION
 // ============================================================
-function simulateInnings(batSquad, bowlSquad, formFactors, target = null) {
+export function simulateInnings(batSquad, bowlSquad, formFactors, target = null, tactics = {}, formatConfig = {}, globalBallsState = { totalPlayed: 0, limit: 2700 }) {
   let totalRuns = 0, wickets = 0, balls = 0, extras = 0;
+  const events = [];
+
+  const format = formatConfig.format || 'T20';
+  const ballsPerInnings = formatConfig.ballsPerInnings || 120;
+  const ballsPerBowler = formatConfig.ballsPerBowler || 24;
+  const powerplayBalls = formatConfig.powerplayBalls || 36;
+  const srMultiplier = formatConfig.srMultiplier || 1.0;
+  const avgMultiplier = formatConfig.avgMultiplier || 1.0;
+
+  // Identify Star Players dynamically for this innings
+  let batStarPlayer = null;
+  let batStarMaxRating = -1;
+  for (const p of batSquad) {
+    if (!p) continue;
+    const rating = calculatePlayerRating(p);
+    if (rating > batStarMaxRating) {
+      batStarMaxRating = rating;
+      batStarPlayer = p;
+    }
+  }
+
+  let bowlStarPlayer = null;
+  let bowlStarMaxRating = -1;
+  for (const p of bowlSquad) {
+    if (!p) continue;
+    const rating = calculatePlayerRating(p);
+    if (rating > bowlStarMaxRating) {
+      bowlStarMaxRating = rating;
+      bowlStarPlayer = p;
+    }
+  }
+
+  const intent = tactics.intent || 'balanced';
+  const bowlingFocus = tactics.bowlingFocus || 'balanced';
 
   let batXI = [...batSquad.slice(0, 11)];
   const batIP = batSquad[11];
@@ -70,11 +235,11 @@ function simulateInnings(batSquad, bowlSquad, formFactors, target = null) {
 
   let lastBowlerIdx = -1;
 
-  while (balls < MAX_BALLS && wickets < 10) {
+  while (balls < ballsPerInnings && wickets < 10 && globalBallsState.totalPlayed < globalBallsState.limit) {
     if (target !== null && totalRuns >= target) break;
 
-    // Batting Impact Player logic
-    if (batIP && !batImpactUsed && wickets >= IMPACT_WICKET_THRESHOLD) {
+    // Batting Impact Player logic (Franchise T20 only)
+    if (format === 'T20' && batIP && !batImpactUsed && wickets >= IMPACT_WICKET_THRESHOLD) {
       let worstIdx = -1;
       let worstScore = 9999;
       let isDeathOvers = balls >= 90; // 15th over onwards
@@ -97,9 +262,9 @@ function simulateInnings(batSquad, bowlSquad, formFactors, target = null) {
       }
     }
 
-    // Bowling Impact Player logic
-    if (bowlIP && !bowlImpactUsed && bowlIP.bowls) {
-      let exhaustedBowlerIdx = activeBowlers.findIndex(b => b.balls >= MAX_BALLS_PER_BOWLER && b.player !== bowlIP && !b.player.isUser); // Protect user
+    // Bowling Impact Player logic (Franchise T20 only)
+    if (format === 'T20' && bowlIP && !bowlImpactUsed && bowlIP.bowls) {
+      let exhaustedBowlerIdx = activeBowlers.findIndex(b => b.balls >= ballsPerBowler && b.player !== bowlIP && !b.player.isUser); // Protect user
       if (exhaustedBowlerIdx !== -1) {
         bowlSubOut = activeBowlers[exhaustedBowlerIdx].player;
         activeBowlers.push({ player: bowlIP, balls: 0, runs: 0, wickets: 0, econ: 0 });
@@ -108,32 +273,46 @@ function simulateInnings(batSquad, bowlSquad, formFactors, target = null) {
       }
     }
 
-    // Select Bowler for this over using round-robin to ensure even distribution and max 4 overs
+    // Select Bowler for this over using round-robin to ensure even distribution and bowler limit
     let currentBowlerIdx = -1;
     for (let offset = 1; offset <= activeBowlers.length; offset++) {
       let idx = (lastBowlerIdx + offset) % activeBowlers.length;
-      if (activeBowlers[idx].balls < MAX_BALLS_PER_BOWLER) {
+      if (activeBowlers[idx].balls < ballsPerBowler) {
         currentBowlerIdx = idx;
         break;
       }
     }
     
-    // Fallback if all bowlers exhausted (shouldn't happen before 20 overs)
+    // Fallback if all bowlers exhausted
     if (currentBowlerIdx === -1) break;
     
     lastBowlerIdx = currentBowlerIdx;
-    let bowler = activeBowlers[currentBowlerIdx];    let legalBallsThisOver = 0;
-    while (legalBallsThisOver < 6 && balls < MAX_BALLS && wickets < 10) {
+    let bowler = activeBowlers[currentBowlerIdx];
+    let legalBallsThisOver = 0;
+    while (legalBallsThisOver < 6 && balls < ballsPerInnings && wickets < 10 && globalBallsState.totalPlayed < globalBallsState.limit) {
       if (target !== null && totalRuns >= target) break;
 
       let striker = allBatters[strikerIdx];
 
       // Extras logic
       if (Math.random() < 0.04) {
-        // Wide or No Ball
         extras++;
         totalRuns++;
         bowler.runs++;
+        
+        events.push({
+          overNum: `${Math.floor(balls / 6)}.${balls % 6}`,
+          striker: striker.player.name,
+          nonStriker: allBatters[nonStrikerIdx].player.name,
+          bowler: bowler.player.name,
+          runs: 1,
+          isWicket: false,
+          wicketType: null,
+          isExtra: true,
+          scoreAtBall: `${totalRuns}/${wickets}`,
+          commentary: generateCommentary(striker.player.name, bowler.player.name, 1, false, null, true),
+          isNotable: format !== 'TEST' // Extras are notable in T20/ODI, skipped in Test timelines
+        });
         continue; // Does not count as a legal ball
       }
 
@@ -142,20 +321,94 @@ function simulateInnings(batSquad, bowlSquad, formFactors, target = null) {
       striker.balls++;
       bowler.balls++;
       balls++;
+      globalBallsState.totalPlayed++;
 
       // Form and powerplay factors
-      const isPowerplay = balls <= POWERPLAY_BALLS;
+      const isPowerplay = format !== 'TEST' && balls <= powerplayBalls;
       const batForm = formFactors[playerKey(striker.player)] ?? 1;
       const bowlForm = formFactors[playerKey(bowler.player)] ?? 1;
       
-      let batSR = striker.player.batSR * batForm;
-      let batAvg = striker.player.batAvg * batForm;
-      let bowlSR = bowler.player.bowlSR / Math.max(0.1, bowlForm);
-      let bowlEcon = bowler.player.bowlEcon / Math.max(0.1, bowlForm);
+      let batSR = striker.player.batSR * batForm * srMultiplier;
+      let batAvg = striker.player.batAvg * batForm * avgMultiplier;
+      let bowlSR = (bowler.player.bowlSR / Math.max(0.1, bowlForm)) / srMultiplier;
+      let bowlEcon = (bowler.player.bowlEcon / Math.max(0.1, bowlForm)) * srMultiplier;
+
+      // Identify if striker/bowler is their team's dynamic Star Player
+      const isStrikerStar = batStarPlayer && playerKey(striker.player) === playerKey(batStarPlayer);
+      const isBowlerStar = bowlStarPlayer && playerKey(bowler.player) === playerKey(bowlStarPlayer);
+
+      // Apply dynamic batting traits
+      if (isStrikerStar) {
+        if (batStarPlayer.role === 'BAT' || batStarPlayer.role === 'WK') {
+          // Chase Master (Active only during run chases)
+          if (target !== null) {
+            batAvg *= 1.20;
+          }
+        } else if (batStarPlayer.role === 'AR') {
+          // Clutch Player (under high run rate or late chase pressure)
+          const isHighPressureBat = target !== null && (
+            ((target - totalRuns) / Math.max(1, (ballsPerInnings - balls))) * 6 > 10.0 || (ballsPerInnings - balls) <= 18
+          );
+          if (isHighPressureBat) {
+            batSR *= 1.15;
+          }
+        }
+      }
+
+      // Apply dynamic bowling traits
+      if (isBowlerStar) {
+        if (bowlStarPlayer.role === 'AR') {
+          // Clutch Bowler (defending tight scores or late game pressure)
+          const isHighPressureBowl = (format !== 'TEST' && balls >= Math.floor(ballsPerInnings * 0.75)) || (target !== null && (target - totalRuns) < 30);
+          if (isHighPressureBowl) {
+            bowlEcon *= 0.85;
+          }
+        }
+      }
+
+      // Apply pre-match strategic tactics
+      let playDefensively = false;
+      let targetWicket = false;
+
+      if (tactics.playDefensivelyAgainstStar && isBowlerStar) {
+        playDefensively = true;
+      }
+      if (tactics.targetOpponentStar && isStrikerStar) {
+        targetWicket = true;
+      }
+
+      // Batting Intent scaling
+      if (intent === 'aggressive') {
+        batSR *= 1.25;
+        batAvg *= 0.78;
+      } else if (intent === 'conservative') {
+        batSR *= 0.75;
+        batAvg *= 1.30;
+      }
+
+      // Bowling Focus scaling (Spinner vs Pacer)
+      const spinner = isSpinner(bowler.player.name);
+      if (bowlingFocus === 'spin') {
+        if (spinner) {
+          bowlSR *= 0.88; // Lower is better
+          bowlEcon *= 0.88;
+        } else {
+          bowlSR *= 1.06;
+          bowlEcon *= 1.06;
+        }
+      } else if (bowlingFocus === 'pace') {
+        if (!spinner) {
+          bowlSR *= 0.88;
+          bowlEcon *= 0.88;
+        } else {
+          bowlSR *= 1.06;
+          bowlEcon *= 1.06;
+        }
+      }
 
       if (isPowerplay) { 
         batSR *= 1.15; batAvg *= 0.95; 
-        bowlEcon *= 1.15; bowlSR *= 1.05; // slightly worse for bowlers
+        bowlEcon *= 1.15; bowlSR *= 1.05;
       }
 
       // Ball outcome probability combining batter and bowler stats
@@ -163,10 +416,45 @@ function simulateInnings(batSquad, bowlSquad, formFactors, target = null) {
       let bowlOutProb = 1 / Math.max(1, bowlSR);
       let outProb = (batOutProb + bowlOutProb) / 2;
 
+      // Apply signature traits that scale outProb
+      if (isStrikerStar && (batStarPlayer.role === 'BAT' || batStarPlayer.role === 'WK') && target !== null) {
+        outProb *= 0.70; // Chase Master: -30% dismissal risk
+      }
+
+      // Apply strategic focus modifiers
+      if (playDefensively) {
+        outProb *= 0.60;  // -40% wicket risk
+        batSR *= 0.70;    // -30% strike rate
+      }
+      if (targetWicket) {
+        outProb *= 1.25;  // +25% wicket probability
+        batSR *= 1.15;    // +15% strike rate allowed (more aggressive)
+      }
+
       if (Math.random() < outProb) {
         striker.out = true;
         wickets++;
         bowler.wickets++;
+        
+        const wicketType = pick(['caught', 'bowled', 'lbw', 'caught']);
+        events.push({
+          overNum: `${Math.floor((balls - 1) / 6)}.${((balls - 1) % 6) + 1}`,
+          striker: striker.player.name,
+          nonStriker: allBatters[nonStrikerIdx].player.name,
+          bowler: bowler.player.name,
+          runs: 0,
+          isWicket: true,
+          wicketType,
+          isExtra: false,
+          scoreAtBall: `${totalRuns}/${wickets}`,
+          isStrikerStar,
+          isBowlerStar,
+          batStarName: batStarPlayer ? batStarPlayer.name : null,
+          bowlStarName: bowlStarPlayer ? bowlStarPlayer.name : null,
+          commentary: generateCommentary(striker.player.name, bowler.player.name, 0, true, wicketType, false),
+          isNotable: true // Wickets are always notable
+        });
+
         if (wickets < 10 && nextIdx < 11) {
           strikerIdx = nextIdx++;
           allBatters[strikerIdx].batted = true;
@@ -177,6 +465,11 @@ function simulateInnings(batSquad, bowlSquad, formFactors, target = null) {
       let batRPB = batSR / 100;
       let bowlRPB = bowlEcon / 6;
       let rpb = (batRPB + bowlRPB) / 2;
+
+      // Apply Deathlock Bowler dynamic trait (BOWL star in overs 16–20 reduces boundary rate by 30%)
+      if (isBowlerStar && bowlStarPlayer.role === 'BOWL' && format !== 'TEST' && balls >= Math.floor(ballsPerInnings * 0.75)) {
+        rpb *= 0.70;
+      }
 
       let runProb = Math.random();
       let runScored = 0;
@@ -201,6 +494,28 @@ function simulateInnings(batSquad, bowlSquad, formFactors, target = null) {
       striker.runs += runScored;
       bowler.runs += runScored;
       totalRuns += runScored;
+
+      const isOverEnd = (legalBallsThisOver === 6 || balls === ballsPerInnings || wickets === 10 || globalBallsState.totalPlayed >= globalBallsState.limit);
+      const isMilestone = (striker.runs === 50 && striker.runs - runScored < 50) || (striker.runs === 100 && striker.runs - runScored < 100);
+      const isNotable = (format !== 'TEST') || (runScored === 4 || runScored === 6 || isOverEnd || isMilestone);
+
+      events.push({
+        overNum: `${Math.floor((balls - 1) / 6)}.${((balls - 1) % 6) + 1}`,
+        striker: striker.player.name,
+        nonStriker: allBatters[nonStrikerIdx].player.name,
+        bowler: bowler.player.name,
+        runs: runScored,
+        isWicket: false,
+        wicketType: null,
+        isExtra: false,
+        scoreAtBall: `${totalRuns}/${wickets}`,
+        isStrikerStar,
+        isBowlerStar,
+        batStarName: batStarPlayer ? batStarPlayer.name : null,
+        bowlStarName: bowlStarPlayer ? bowlStarPlayer.name : null,
+        commentary: generateCommentary(striker.player.name, bowler.player.name, runScored, false, null, false),
+        isNotable
+      });
 
       if (runScored === 1 || runScored === 3) {
         let temp = strikerIdx;
@@ -242,10 +557,15 @@ function simulateInnings(batSquad, bowlSquad, formFactors, target = null) {
     bowlImpactUsed, bowlSubOut, bowlIP: bowlImpactUsed ? bowlIP : null,
     overs: Math.floor(balls / 6) + (balls % 6 ? `.${balls % 6}` : ''),
     oversDisplay: `${Math.floor(balls / 6)}${balls % 6 ? '.' + (balls % 6) : ''}`,
+    events,
   };
 }
 
-export function simulateMatch(homeId, awayId, userName, userTeam, playersMap, label = 'League', preTossWinner = null, preTossDecision = null, godMode = false) {
+export function simulateMatch(homeId, awayId, userName, userTeam, playersMap, label = 'League', preTossWinner = null, preTossDecision = null, godMode = false, homeTactics = {}, awayTactics = {}, formatConfig = {}, customRosters = null) {
+  // Determine format config or fallback to T20
+  const activeFormatConfig = (formatConfig && formatConfig.format) ? formatConfig : FORMATS.T20;
+  const format = activeFormatConfig.format || 'T20';
+
   // If god mode is active, swap in a boosted user player for this match only.
   let effectivePlayersMap = playersMap;
   const userKey = `USER:${userName}`;
@@ -263,8 +583,26 @@ export function simulateMatch(homeId, awayId, userName, userTeam, playersMap, la
     };
   }
 
-  const homeLineup = getLineup(homeId, userName, userTeam, effectivePlayersMap);
-  const awayLineup = getLineup(awayId, userName, userTeam, effectivePlayersMap);
+  // Load lineups using customRosters source if available, else fallback to ROSTERS in data
+  const rostersSource = customRosters || {};
+  const getLineupLocal = (tId) => {
+    // If it is the user's team, inject user at the top
+    if (tId === userTeam && userName) {
+      const lineup = [effectivePlayersMap[`USER:${userName}`]];
+      const ros = rostersSource[userTeam] || [];
+      ros.forEach(tup => {
+        if (effectivePlayersMap[`${userTeam}:${tup[0]}`]) {
+          lineup.push(effectivePlayersMap[`${userTeam}:${tup[0]}`]);
+        }
+      });
+      return lineup;
+    }
+    const ros = rostersSource[tId] || [];
+    return ros.map(tup => effectivePlayersMap[`${tId}:${tup[0]}`]).filter(Boolean);
+  };
+
+  const homeLineup = customRosters ? getLineupLocal(homeId) : getLineup(homeId, userName, userTeam, effectivePlayersMap);
+  const awayLineup = customRosters ? getLineupLocal(awayId) : getLineup(awayId, userName, userTeam, effectivePlayersMap);
 
   const tossWinner = preTossWinner || (Math.random() < 0.5 ? homeId : awayId);
   const tossDecision = preTossDecision || (Math.random() < TOSS_FIELD_FIRST_PROB ? 'bowl' : 'bat');
@@ -283,10 +621,78 @@ export function simulateMatch(homeId, awayId, userName, userTeam, playersMap, la
   const secondBatSquad = battingFirst === homeId ? awayLineup : homeLineup;
   const secondBowlSquad = battingFirst === homeId ? homeLineup : awayLineup;
 
-  // Per-match form factors — applied to both innings consistently
+  // Setup actual tactics objects
+  const firstTactics = battingFirst === homeId ? homeTactics : awayTactics;
+  const secondTactics = battingFirst === homeId ? awayTactics : homeTactics;
+
+  // Per-match form factors — applied to all innings consistently
   const formFactors = generateFormFactors(homeLineup, awayLineup);
 
-  const inn1 = simulateInnings(firstBatSquad, firstBowlSquad, formFactors);
+  if (format === 'TEST') {
+    const globalBallsState = { totalPlayed: 0, limit: activeFormatConfig.matchBallLimit || 2700 };
+
+    // Innings 1: Team A bats
+    const inn1 = simulateInnings(firstBatSquad, firstBowlSquad, formFactors, null, firstTactics, activeFormatConfig, globalBallsState);
+
+    // Innings 2: Team B bats
+    const inn2 = simulateInnings(secondBatSquad, secondBowlSquad, formFactors, null, secondTactics, activeFormatConfig, globalBallsState);
+
+    let inn3 = null;
+    let inn4 = null;
+    let winner = null;
+    let margin = 0;
+    let marginType = 'Draw';
+
+    // Proceed to Innings 3 if time remains
+    if (globalBallsState.totalPlayed < globalBallsState.limit) {
+      inn3 = simulateInnings(firstBatSquad, firstBowlSquad, formFactors, null, firstTactics, activeFormatConfig, globalBallsState);
+
+      // Check for Innings Victory: if Innings 2 total is greater than Innings 1 + Innings 3
+      const teamBLead = inn2.totalRuns - (inn1.totalRuns + inn3.totalRuns);
+      
+      if (teamBLead > 0) {
+        winner = battingSecond;
+        margin = teamBLead;
+        marginType = 'innings and runs';
+      } else if (globalBallsState.totalPlayed < globalBallsState.limit) {
+        // Innings 4: Team B chases target
+        const target = (inn1.totalRuns + inn3.totalRuns) - inn2.totalRuns + 1;
+        inn4 = simulateInnings(secondBatSquad, secondBowlSquad, formFactors, target, secondTactics, activeFormatConfig, globalBallsState);
+
+        const totalSecondRuns = inn2.totalRuns + inn4.totalRuns;
+        const totalFirstRuns = inn1.totalRuns + inn3.totalRuns;
+
+        if (totalSecondRuns >= totalFirstRuns + 1) {
+          winner = battingSecond;
+          margin = 10 - inn4.wickets;
+          marginType = 'wickets';
+        } else if (inn4.wickets === 10) {
+          winner = battingFirst;
+          margin = totalFirstRuns - totalSecondRuns;
+          marginType = 'runs';
+        } else {
+          winner = null;
+          margin = 0;
+          marginType = 'Draw';
+        }
+      }
+    }
+
+    return {
+      home: homeId, away: awayId,
+      label, tossWinner, tossDecision,
+      battingFirst, battingSecond,
+      inn1, inn2, inn3, inn4,
+      winner, margin, marginType,
+      format: 'TEST',
+      godMode,
+      homeTactics,
+      awayTactics,
+    };
+  }
+
+  // Fallback / standard T20 / ODI single-innings logic
+  const inn1 = simulateInnings(firstBatSquad, firstBowlSquad, formFactors, null, firstTactics, activeFormatConfig);
 
   // Dynamic user form adjustment based on 1st innings performance
   if (formFactors[userKey]) {
@@ -305,7 +711,7 @@ export function simulateMatch(homeId, awayId, userName, userTeam, playersMap, la
   }
 
   const target = inn1.totalRuns + 1;
-  const inn2 = simulateInnings(secondBatSquad, secondBowlSquad, formFactors, target);
+  const inn2 = simulateInnings(secondBatSquad, secondBowlSquad, formFactors, target, secondTactics, activeFormatConfig);
 
   let winner, margin, marginType;
   if (inn2.totalRuns >= target) {
@@ -328,7 +734,10 @@ export function simulateMatch(homeId, awayId, userName, userTeam, playersMap, la
     battingFirst, battingSecond,
     inn1, inn2,
     winner, margin, marginType,
+    format: activeFormatConfig.format,
     godMode,
+    homeTactics,
+    awayTactics,
   };
 }
 
