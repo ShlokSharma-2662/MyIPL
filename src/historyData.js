@@ -92,14 +92,16 @@ export const LEGACY_HISTORY = [
   }
 ];
 
-export const LEGACY_RIVALRIES = {
-  MI: { wins: 9, losses: 7 },
-  RCB: { wins: 12, losses: 3 },
-  KKR: { wins: 10, losses: 5 },
-  RR: { wins: 8, losses: 6 },
-  SRH: { wins: 11, losses: 4 },
-  DC: { wins: 9, losses: 5 },
-  PBKS: { wins: 10, losses: 4 },
-  LSG: { wins: 4, losses: 2 },
-  GT: { wins: 3, losses: 3 },
-};
+import { IPL_AGGREGATES } from './data/iplAggregates';
+
+// Seed the All-Time Rivalry Meter with CSK's REAL head-to-head record from the
+// IPL ball-by-ball data (renamed franchises merged: DD→DC, KXIP→PBKS, etc.).
+export const LEGACY_RIVALRIES = (() => {
+  const csk = IPL_AGGREGATES.h2h.CSK || {};
+  const out = {};
+  for (const opp of ['MI', 'RCB', 'KKR', 'RR', 'SRH', 'DC', 'PBKS', 'LSG', 'GT']) {
+    const r = csk[opp];
+    if (r) out[opp] = { wins: r.w, losses: r.l };
+  }
+  return out;
+})();

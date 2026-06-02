@@ -1,9 +1,11 @@
 import { TEAMS, getLineup, playerKey } from './data';
 import { FORMATS } from './formats';
+import { HOME_VENUES, venueScoringEffect } from './venues';
 import {
   MAX_BALLS, TOSS_FIELD_FIRST_PROB, MAX_BALLS_PER_BOWLER, MAX_ACTIVE_BOWLERS,
   POWERPLAY_BALLS, IMPACT_WICKET_THRESHOLD, FORM_MIN, FORM_MAX, LEAGUE_MATCHES_PER_TEAM,
   GOD_BAT_SR, GOD_BAT_AVG, GOD_BOWL_SR, GOD_BOWL_ECON,
+  LEAGUE_RPB, PHASE_FACTORS, PHASE_RUN_DIST, EXTRA_BALL_PROB, DISMISSAL_MIX,
 } from './constants';
 
 // ============================================================
@@ -11,6 +13,26 @@ import {
 // ============================================================
 export function clamp(n, min, max) { return Math.max(min, Math.min(max, n)); }
 export function rand(min, max) { return min + Math.random() * (max - min); }
+
+// Match phase from balls bowled — drives real-data scoring/wicket calibration.
+export function phaseOf(balls, ballsPerInnings) {
+  if (ballsPerInnings <= 120) {
+    const over = Math.floor(Math.max(0, balls - 1) / 6);
+    return over < 6 ? 'powerplay' : over < 15 ? 'middle' : 'death';
+  }
+  const frac = balls / ballsPerInnings;          // longer formats: proportional bands
+  return frac < 0.3 ? 'powerplay' : frac < 0.8 ? 'middle' : 'death';
+}
+
+// Weighted dismissal type from the real IPL bowler-credited mix (caught 63%, bowled 17%…).
+const BOWLER_DISMISSALS = ['caught', 'bowled', 'lbw', 'caught and bowled', 'stumped'];
+function pickDismissal() {
+  let total = 0;
+  const cum = BOWLER_DISMISSALS.map(k => { total += (DISMISSAL_MIX[k] || 0); return [k, total]; });
+  const r = Math.random() * total;
+  for (const [k, c] of cum) if (r < c) return k;
+  return 'caught';
+}
 export function randInt(min, max) { return Math.floor(rand(min, max + 1)); }
 export function pick(arr) { return arr[randInt(0, arr.length - 1)]; }
 export function shuffle(arr) {
@@ -120,6 +142,12 @@ function generateCommentary(strikerName, bowlerName, runScored, isWicket, wicket
     if (wicketType === 'lbw') {
       return `OUT! PLUMB! ${strikerName} plays across the line, hit on the pad. Big appeal and the finger goes up! Excellent bowling from ${bowlerName}.`;
     }
+    if (wicketType === 'stumped') {
+      return `OUT! STUMPED! ${strikerName} is beaten in the flight by ${bowlerName}, the keeper whips off the bails in a flash. Sharp work!`;
+    }
+    if (wicketType === 'caught and bowled') {
+      return `OUT! Caught and bowled! ${strikerName} drills it straight back and ${bowlerName} pouches a brilliant return catch!`;
+    }
     const catchPhrases = [
       `OUT! In the air... and taken! ${strikerName} goes for the big hit off ${bowlerName} but is caught cleanly at deep mid-wicket.`,
       `OUT! Edged and caught! ${strikerName} gets a thick outside edge off ${bowlerName} and the wicketkeeper makes no mistake.`,
@@ -179,6 +207,7 @@ export function simulateInnings(batSquad, bowlSquad, formFactors, target = null,
   const powerplayBalls = formatConfig.powerplayBalls || 36;
   const srMultiplier = formatConfig.srMultiplier || 1.0;
   const avgMultiplier = formatConfig.avgMultiplier || 1.0;
+  const venueFactor = formatConfig.venueFactor || 1.0;   // real venue scoring effect
 
   // Identify Star Players dynamically for this innings
   let batStarPlayer = null;
@@ -294,8 +323,8 @@ export function simulateInnings(batSquad, bowlSquad, formFactors, target = null,
 
       let striker = allBatters[strikerIdx];
 
-      // Extras logic
-      if (Math.random() < 0.04) {
+      // Extras logic — real combined wide + no-ball rate per legal ball
+      if (Math.random() < EXTRA_BALL_PROB) {
         extras++;
         totalRuns++;
         bowler.runs++;
@@ -323,8 +352,8 @@ export function simulateInnings(batSquad, bowlSquad, formFactors, target = null,
       balls++;
       globalBallsState.totalPlayed++;
 
-      // Form and powerplay factors
-      const isPowerplay = format !== 'TEST' && balls <= powerplayBalls;
+      // Form + real-data phase calibration (powerplay / middle / death)
+      const matchPhase = format !== 'TEST' ? phaseOf(balls, ballsPerInnings) : 'middle';
       const batForm = formFactors[playerKey(striker.player)] ?? 1;
       const bowlForm = formFactors[playerKey(bowler.player)] ?? 1;
       
@@ -406,15 +435,15 @@ export function simulateInnings(batSquad, bowlSquad, formFactors, target = null,
         }
       }
 
-      if (isPowerplay) { 
-        batSR *= 1.15; batAvg *= 0.95; 
-        bowlEcon *= 1.15; bowlSR *= 1.05;
-      }
+      // Real-data phase factors: powerplay/middle/death scoring & dismissal risk vs
+      // league average (e.g. death overs = 1.19× runs, 1.64× wickets). Replaces the
+      // old flat powerplay boost — captured authentically by the phase factors below.
+      const pf = (format !== 'TEST' && PHASE_FACTORS[matchPhase]) ? PHASE_FACTORS[matchPhase] : { runFactor: 1, wktFactor: 1 };
 
       // Ball outcome probability combining batter and bowler stats
       let batOutProb = (batSR / 100) / Math.max(1, batAvg);
       let bowlOutProb = 1 / Math.max(1, bowlSR);
-      let outProb = (batOutProb + bowlOutProb) / 2;
+      let outProb = ((batOutProb + bowlOutProb) / 2) * pf.wktFactor;
 
       // Apply signature traits that scale outProb
       if (isStrikerStar && (batStarPlayer.role === 'BAT' || batStarPlayer.role === 'WK') && target !== null) {
@@ -436,7 +465,7 @@ export function simulateInnings(batSquad, bowlSquad, formFactors, target = null,
         wickets++;
         bowler.wickets++;
         
-        const wicketType = pick(['caught', 'bowled', 'lbw', 'caught']);
+        const wicketType = pickDismissal();
         events.push({
           overNum: `${Math.floor((balls - 1) / 6)}.${((balls - 1) % 6) + 1}`,
           striker: striker.player.name,
@@ -464,25 +493,41 @@ export function simulateInnings(batSquad, bowlSquad, formFactors, target = null,
 
       let batRPB = batSR / 100;
       let bowlRPB = bowlEcon / 6;
-      let rpb = (batRPB + bowlRPB) / 2;
+      // Skill-driven scoring rate. Phase scoring level is already baked into the
+      // per-phase run distribution below, so we do NOT re-apply pf.runFactor here.
+      // The venue factor nudges scoring up/down per the ground's real characteristics.
+      let rpb = ((batRPB + bowlRPB) / 2) * venueFactor;
 
       // Apply Deathlock Bowler dynamic trait (BOWL star in overs 16–20 reduces boundary rate by 30%)
       if (isBowlerStar && bowlStarPlayer.role === 'BOWL' && format !== 'TEST' && balls >= Math.floor(ballsPerInnings * 0.75)) {
         rpb *= 0.70;
       }
 
+      // Phase-anchored run model: start from the REAL off-bat distribution for this
+      // phase, then scale boundary/twos odds by how the matchup compares to a
+      // league-average ball. At an average matchup the odds equal reality; God Mode
+      // and star traits push scoreBoost well above 1 so they still explode.
+      const dist = (format !== 'TEST' ? PHASE_RUN_DIST[matchPhase] : PHASE_RUN_DIST.middle) || PHASE_RUN_DIST.middle;
+      const scoreBoost = clamp(rpb / LEAGUE_RPB, 0.25, 4.5);
+
+      let p6v = dist['6'] * scoreBoost;
+      let p4v = dist['4'] * scoreBoost;
+      let p2v = dist['2'] * (0.6 + 0.4 * scoreBoost);
+      let p3v = dist['3'] * (0.6 + 0.4 * scoreBoost);
+      let p1v = dist['1'] * (0.9 + 0.1 * scoreBoost);
+      // Cap runaway boundary share so an innings can't become physically impossible.
+      const boundary = p6v + p4v;
+      if (boundary > 0.9) { const s = 0.9 / boundary; p6v *= s; p4v *= s; }
+
+      const c6 = p6v, c4 = c6 + p4v, c2 = c4 + p2v, c3 = c2 + p3v, c1 = c3 + p1v;
       let runProb = Math.random();
       let runScored = 0;
 
-      let p6 = 0.06 * rpb;
-      let p4 = p6 + 0.08 * rpb;
-      let p2 = p4 + 0.05 * rpb;
-      let p1 = p2 + 0.25 * rpb;
-
-      if (runProb < p6) { runScored = 6; striker.sixes++; }
-      else if (runProb < p4) { runScored = 4; striker.fours++; }
-      else if (runProb < p2) { runScored = 2; }
-      else if (runProb < p1) { runScored = 1; }
+      if (runProb < c6) { runScored = 6; striker.sixes++; }
+      else if (runProb < c4) { runScored = 4; striker.fours++; }
+      else if (runProb < c2) { runScored = 2; }
+      else if (runProb < c3) { runScored = 3; }
+      else if (runProb < c1) { runScored = 1; }
       else { runScored = 0; }
 
       if (target !== null && totalRuns + runScored > target) {
@@ -628,14 +673,21 @@ export function simulateMatch(homeId, awayId, userName, userTeam, playersMap, la
   // Per-match form factors — applied to all innings consistently
   const formFactors = generateFormFactors(homeLineup, awayLineup);
 
+  // Venue: league matches are played at the home team's real ground, whose
+  // scoring characteristics (from actual ball-by-ball RPO) nudge the totals.
+  const homeVenue = HOME_VENUES[homeId] || null;
+  const venueName = homeVenue ? homeVenue.name : 'Neutral Venue';
+  const venueFactor = homeVenue ? venueScoringEffect(homeVenue.factor) : 1;
+  const cfg = { ...activeFormatConfig, venueFactor };
+
   if (format === 'TEST') {
     const globalBallsState = { totalPlayed: 0, limit: activeFormatConfig.matchBallLimit || 2700 };
 
     // Innings 1: Team A bats
-    const inn1 = simulateInnings(firstBatSquad, firstBowlSquad, formFactors, null, firstTactics, activeFormatConfig, globalBallsState);
+    const inn1 = simulateInnings(firstBatSquad, firstBowlSquad, formFactors, null, firstTactics, cfg, globalBallsState);
 
     // Innings 2: Team B bats
-    const inn2 = simulateInnings(secondBatSquad, secondBowlSquad, formFactors, null, secondTactics, activeFormatConfig, globalBallsState);
+    const inn2 = simulateInnings(secondBatSquad, secondBowlSquad, formFactors, null, secondTactics, cfg, globalBallsState);
 
     let inn3 = null;
     let inn4 = null;
@@ -645,7 +697,7 @@ export function simulateMatch(homeId, awayId, userName, userTeam, playersMap, la
 
     // Proceed to Innings 3 if time remains
     if (globalBallsState.totalPlayed < globalBallsState.limit) {
-      inn3 = simulateInnings(firstBatSquad, firstBowlSquad, formFactors, null, firstTactics, activeFormatConfig, globalBallsState);
+      inn3 = simulateInnings(firstBatSquad, firstBowlSquad, formFactors, null, firstTactics, cfg, globalBallsState);
 
       // Check for Innings Victory: if Innings 2 total is greater than Innings 1 + Innings 3
       const teamBLead = inn2.totalRuns - (inn1.totalRuns + inn3.totalRuns);
@@ -657,7 +709,7 @@ export function simulateMatch(homeId, awayId, userName, userTeam, playersMap, la
       } else if (globalBallsState.totalPlayed < globalBallsState.limit) {
         // Innings 4: Team B chases target
         const target = (inn1.totalRuns + inn3.totalRuns) - inn2.totalRuns + 1;
-        inn4 = simulateInnings(secondBatSquad, secondBowlSquad, formFactors, target, secondTactics, activeFormatConfig, globalBallsState);
+        inn4 = simulateInnings(secondBatSquad, secondBowlSquad, formFactors, target, secondTactics, cfg, globalBallsState);
 
         const totalSecondRuns = inn2.totalRuns + inn4.totalRuns;
         const totalFirstRuns = inn1.totalRuns + inn3.totalRuns;
@@ -681,6 +733,7 @@ export function simulateMatch(homeId, awayId, userName, userTeam, playersMap, la
     return {
       home: homeId, away: awayId,
       label, tossWinner, tossDecision,
+      venue: venueName, venueFactor,
       battingFirst, battingSecond,
       inn1, inn2, inn3, inn4,
       winner, margin, marginType,
@@ -692,7 +745,7 @@ export function simulateMatch(homeId, awayId, userName, userTeam, playersMap, la
   }
 
   // Fallback / standard T20 / ODI single-innings logic
-  const inn1 = simulateInnings(firstBatSquad, firstBowlSquad, formFactors, null, firstTactics, activeFormatConfig);
+  const inn1 = simulateInnings(firstBatSquad, firstBowlSquad, formFactors, null, firstTactics, cfg);
 
   // Dynamic user form adjustment based on 1st innings performance
   if (formFactors[userKey]) {
@@ -711,7 +764,7 @@ export function simulateMatch(homeId, awayId, userName, userTeam, playersMap, la
   }
 
   const target = inn1.totalRuns + 1;
-  const inn2 = simulateInnings(secondBatSquad, secondBowlSquad, formFactors, target, secondTactics, activeFormatConfig);
+  const inn2 = simulateInnings(secondBatSquad, secondBowlSquad, formFactors, target, secondTactics, cfg);
 
   let winner, margin, marginType;
   if (inn2.totalRuns >= target) {
@@ -731,6 +784,7 @@ export function simulateMatch(homeId, awayId, userName, userTeam, playersMap, la
   return {
     home: homeId, away: awayId,
     label, tossWinner, tossDecision,
+    venue: venueName, venueFactor,
     battingFirst, battingSecond,
     inn1, inn2,
     winner, margin, marginType,

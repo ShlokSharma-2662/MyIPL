@@ -5,6 +5,7 @@ import { TEAMS, buildAllPlayers } from '../data';
 import { USER_TEAM } from '../constants';
 import { getStarPlayerForTeam, calculatePlayerRating } from '../simulation';
 import { INTERNATIONAL_TEAMS, INTERNATIONAL_ROSTERS } from '../internationalData';
+import { HOME_VENUES, venueScoringEffect } from '../venues';
 
 function getStarPlayerTrait(player) {
   if (!player) return { name: 'None', description: '' };
@@ -173,6 +174,17 @@ export default function MatchPreview({ homeId, awayId, userName, teamStats, play
             <div className="text-center font-mono">
               <div className={`text-2xl font-black ${isInternational ? 'text-blue-400' : 'text-amber-500'}`}>{winPct}% vs {100 - winPct}%</div>
               <div className="text-[9px] text-zinc-500 tracking-wider uppercase font-bold">Win Probability</div>
+              {!isInternational && HOME_VENUES[homeId] && (
+                <div className="mt-1.5 text-[9px] text-zinc-500 tracking-wide normal-case font-sans">
+                  📍 {HOME_VENUES[homeId].name.split(',')[0]}
+                  {(() => {
+                    const eff = venueScoringEffect(HOME_VENUES[homeId].factor);
+                    const pct = Math.round((eff - 1) * 100);
+                    if (pct === 0) return null;
+                    return <span className={pct > 0 ? 'text-orange-400/80' : 'text-sky-400/80'}> · {pct > 0 ? `+${pct}% batting` : `${pct}% scoring`}</span>;
+                  })()}
+                </div>
+              )}
             </div>
 
             <div className="flex items-center gap-3 text-right">

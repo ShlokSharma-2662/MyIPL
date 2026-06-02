@@ -16,6 +16,7 @@ import TossModal from './components/TossModal';
 import SeasonSummary from './components/SeasonSummary';
 import GodModeAlert from './components/GodModeAlert';
 import HistoryView from './components/HistoryView';
+import RecordsView from './components/RecordsView';
 
 // Premium interactive features
 import MatchPreview from './components/MatchPreview';
@@ -212,6 +213,13 @@ function MainApp({ user }) {
               />
             )}
             {tab === 'teams' && <AllTeamsView state={{ teamHistoricTitles, teamStats, userTeam, results, history, champion }} />}
+            {tab === 'records' && (
+              <RecordsView
+                history={history}
+                userName={userName}
+                userCareerLive={allPlayerStats[`USER:${userName}`]}
+              />
+            )}
             {tab === 'playoffs' && <PlayoffsView playoff={playoff} onOpen={setOpenMatch} champion={champion} />}
             {tab === 'history' && (
               <HistoryView

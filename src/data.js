@@ -1,4 +1,5 @@
 import { USER_BAT_SR, USER_BAT_AVG, USER_BOWL_SR, USER_BOWL_ECON } from './constants';
+import { REAL_PLAYER_STATS } from './data/realPlayerStats';
 
 export const TEAMS = [
   { id: 'CSK', name: 'Chennai Super Kings', short: 'CSK', primary: '#F9CD05', dark: '#1E4D8C' },
@@ -158,12 +159,17 @@ export const ROSTERS = {
 
 export function toPlayer(tup, teamId) {
   const [name, role, batSR, batAvg, bowlSR, bowlEcon] = tup;
+  // Overlay real IPL career ratings (from ball-by-ball data) when available,
+  // falling back to the curated hand-tuned values for low-sample tail-enders.
+  const real = REAL_PLAYER_STATS[`${teamId}:${name}`] || {};
   return {
     name, role, team: teamId,
-    batSR, batAvg,
+    batSR: real.batSR ?? batSR,
+    batAvg: real.batAvg ?? batAvg,
     bowls: bowlSR !== null,
-    bowlSR: bowlSR || 0,
-    bowlEcon: bowlEcon || 0,
+    bowlSR: real.bowlSR ?? (bowlSR || 0),
+    bowlEcon: real.bowlEcon ?? (bowlEcon || 0),
+    realRated: real.batSR != null || real.bowlSR != null,
   };
 }
 

@@ -38,6 +38,21 @@ Built with **React 19 + Vite 8 + Tailwind v4**.
 
 ---
 
+## 📊 Powered by Real IPL Data
+
+The simulation is no longer driven by hand-tuned guesses — it's calibrated against **283,678 real IPL deliveries** (1,193 matches, 2008–2026) parsed from ball-by-ball data.
+
+- **Real player ratings:** Every rostered player's batting SR/average and bowling SR/economy is computed from their actual IPL career (e.g. Kohli SR 133.5 · Avg 39.9, Bumrah Econ 7.3, Narine Econ 6.8). Genuine tail-enders fall back to curated values.
+- **Phase-calibrated engine:** Scoring and dismissal risk follow the real powerplay → middle → death curve (death overs = **1.19× runs, 1.64× wickets**), with the per-ball run distribution sampled from real phase data — so boundaries, strike rotation and the death-overs explosion all feel authentic.
+- **Real dismissal mix:** Wicket types are weighted by reality (caught 63%, bowled 17%, lbw 6%, stumped, c&b…), and extras use the true wide/no-ball rate.
+- **Real venues:** League matches are played at each franchise's actual home ground, whose scoring factor (from real RPO — Chinnaswamy +16%, Chepauk −1%) nudges the totals. Toss AI fields first ~66% of the time, matching real captains.
+- **IPL Records tab:** Browse all-time leaderboards (runs, wickets, sixes, Player-of-Match, highest totals) and a **Chase the Legends** panel tracking your career against Kohli's 8,899 runs, Chahal's 224 wickets and Gayle's 359 sixes.
+- **Real rivalries:** The All-Time Rivalry Meter is seeded with CSK's genuine head-to-head record (e.g. trailing MI 18–21, leading RCB 21–14).
+
+> Data is pre-computed into compact modules via `npm run extract:ipl` (see `scripts/extract-ipl.mjs`); the 105 MB source CSV never ships to the browser.
+
+---
+
 ## Ultimate RPG & Career Expansion
 
 ### 🇮🇳 Year-Round International Career (Rest of the Year)
@@ -75,18 +90,24 @@ Built with **React 19 + Vite 8 + Tailwind v4**.
 
 ```
 src/
-├── constants.js          Magic numbers (powerplay balls, form ranges, god mode stats…)
-├── data.js               TEAMS, ROSTERS, lineup helpers
+├── constants.js          Magic numbers + real-data calibration (phase factors, run dist…)
+├── data.js               TEAMS, ROSTERS (real career ratings overlaid), lineup helpers
+├── venues.js             Real franchise home grounds + scoring factors
+├── data/                 AUTO-GENERATED real-IPL modules (see scripts/extract-ipl.mjs)
+│   ├── realPlayerStats.js  Per-player career ratings + free-agent pool
+│   ├── iplAggregates.js    Phase splits, extras, dismissals, venues, toss, H2H
+│   └── iplRecords.js       All-time leaderboards for the Records tab
 ├── firebase.js           Firebase configuration, Authentication, and Cloud Firestore helpers
 ├── simulation.js         Ball-by-ball innings sim, schedule generator, god mode pick
 ├── stats.js              Team & player stat aggregation, NRR
-├── historyData.js        Seed data for legacy seasons and rivalries
+├── historyData.js        Legacy seasons + rivalries seeded from real CSK H2H
 ├── hooks/
 │   └── useTournament.js  Top-level state machine & localStorage persistence
 ├── App.jsx               Top-level routing and UI Shell
 ├── index.css             Tailwind, fonts, animations, glass-panel
 └── components/
     ├── HistoryView.jsx   Career dashboard and Rivalry Meter
+    ├── RecordsView.jsx   All-time IPL records + Chase the Legends
     ├── MyProfile.jsx     Active season 10-card dashboard
     ├── SetupScreen.jsx
     ├── ControlBar.jsx
@@ -126,9 +147,9 @@ npm run preview
 1. **Toss** — random winner. If CSK wins → modal asks you bat/bowl. Otherwise auto-decided.
 2. **Form factors** generated per player for the match.
 3. **Innings 1 (120 balls / 10 wickets)** — ball-by-ball loop:
-   - Powerplay (first 36 balls): SR ×1.15, AVG ×0.95
-   - Per-ball out probability derived from `(batAvg × 100) / batSR`
-   - Run distribution weighted by SR (6/4/2/1/0)
+   - **Real phase calibration**: powerplay / middle / death factors scale dismissal risk, and the run outcome is sampled from that phase's **real off-bat distribution** (conditioned on the batter surviving), scaled by the skill matchup so God Mode still explodes.
+   - Per-ball out probability blends batter `(SR/100)/AVG` and bowler `1/bowlSR`, × the phase wicket factor.
+   - **Venue factor** nudges scoring per the host ground's real characteristics.
    - Impact Player swaps dynamically executed based on match state.
 4. **Innings 2** — same loop, capped at chase target.
 5. **Bowler Ledger** — balls distributed evenly, runs weighted by economy, wickets by strike rate.
