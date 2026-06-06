@@ -26,9 +26,10 @@ public static class DbConnectionString
             Username = Uri.UnescapeDataString(userInfo[0]),
             Password = userInfo.Length > 1 ? Uri.UnescapeDataString(userInfo[1]) : string.Empty,
             Database = uri.AbsolutePath.TrimStart('/'),
-            // Npgsql 8+: Require encrypts the connection without validating the
-            // server's CA chain — the right mode for Railway's managed proxy.
-            SslMode = SslMode.Require,
+            // Prefer negotiates SSL on Railway's public proxy (encrypted, no CA
+            // validation) but falls back to plaintext on the private network, so
+            // the same code works whether DATABASE_URL is the public or internal URL.
+            SslMode = SslMode.Prefer,
         };
 
         return builder.ConnectionString;
