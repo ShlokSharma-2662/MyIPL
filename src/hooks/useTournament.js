@@ -6,7 +6,7 @@ import { recalcAll, accumulateMatchStats, computeNRR, recalcAllInternational } f
 import { generateInternationalSchedule, INTERNATIONAL_ROSTERS, INTERNATIONAL_TEAMS } from '../internationalData';
 import { FORMATS } from '../formats';
 import { LEGACY_HISTORY, LEGACY_RIVALRIES } from '../historyData';
-import { saveStateToFirebase, loadStateFromFirebase, clearFirebaseState } from '../firebase';
+import { getGameState, saveGameState, clearGameState } from '../api';
 
 const STORAGE_KEY = 'ipl_sim_state_v2'; // Increment to avoid state collision
 
@@ -90,7 +90,7 @@ export function useTournament() {
   useEffect(() => {
     async function init() {
       try {
-        let saved = await loadStateFromFirebase();
+        let saved = await getGameState();
         if (!saved) {
           saved = loadState();
         }
@@ -184,7 +184,7 @@ export function useTournament() {
     if (!hydrated) return;
     if (phase === 'setup') {
       localStorage.removeItem(STORAGE_KEY);
-      clearFirebaseState();
+      clearGameState();
       return;
     }
     try {
@@ -236,11 +236,10 @@ export function useTournament() {
         internationalResults: sanitizedIntResults,
         internationalPlayerStats
       };
-      // Save full state (including nested-array rosters) to localStorage only
+      // Save the full state to localStorage (offline cache) and the backend.
+      // Postgres stores JSON, so customRosters (nested arrays) round-trips fine.
       localStorage.setItem(STORAGE_KEY, JSON.stringify(stateData));
-      // Firebase doesn't support nested arrays — strip customRosters before sending
-      const { customRosters: _omit, ...firebasePayload } = stateData;
-      saveStateToFirebase(firebasePayload);
+      saveGameState(stateData);
     } catch {}
   }, [hydrated, userName, userTeam, tourney, schedule, results, phase, playoff, playoffStep, champion, godModeMatches, usedPlayoffGodMode, history, careerRivalries, hallOfFame, unlockedAchievements, fanPopularity, playerXP, userPlayerAttributes, activeSponsor, clt20Active, teamHistoricTitles, rosterVersion, internationalActive, internationalSchedule, internationalResults, internationalPlayerStats]);
 
@@ -519,11 +518,11 @@ export function useTournament() {
         unlockedAchievements: nextAchievements
       };
       localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-      saveStateToFirebase(data);
+      saveGameState(data);
     } else {
       const data = { history, careerRivalries, hallOfFame, unlockedAchievements };
       localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-      saveStateToFirebase(data);
+      saveGameState(data);
     }
     
     setUserName(null);

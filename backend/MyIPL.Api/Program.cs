@@ -92,11 +92,16 @@ builder.Services.AddOpenApi();
 
 var app = builder.Build();
 
-// Apply migrations / create the database on startup so first run just works.
+// Schema on startup. Postgres (production) uses versioned EF migrations;
+// local SQLite dev uses EnsureCreated for a zero-friction recreate. Keeping
+// migrations Postgres-only avoids multi-provider migration conflicts.
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-    db.Database.EnsureCreated();
+    if (db.Database.IsNpgsql())
+        db.Database.Migrate();
+    else
+        db.Database.EnsureCreated();
 }
 
 if (app.Environment.IsDevelopment())

@@ -21,7 +21,9 @@ async function request(path, { method = 'GET', body, auth = false } = {}) {
 
   if (!res.ok) {
     const text = await res.text().catch(() => '');
-    throw new Error(`API ${method} ${path} failed: ${res.status} ${text}`);
+    const err = new Error(`API ${method} ${path} failed: ${res.status} ${text}`);
+    err.status = res.status;
+    throw err;
   }
 
   // 204/empty bodies → null
@@ -51,6 +53,40 @@ export function getMyProfile() {
 /** Any user's public career history by Firebase UID. */
 export function getProfile(uid) {
   return request(`/api/profile/${encodeURIComponent(uid)}`);
+}
+
+// --- Game save (replaces Firestore persistence) --------------------------
+
+/**
+ * Load the signed-in user's saved game, or null if there's no save yet or the
+ * backend is unreachable (caller then falls back to the localStorage cache).
+ */
+export async function getGameState() {
+  try {
+    return await request('/api/game', { auth: true });
+  } catch (e) {
+    if (e.status === 404) return null;          // no save yet
+    console.warn('getGameState failed; using local fallback:', e);
+    return null;                                // offline / server down
+  }
+}
+
+/** Persist the full game state. Fire-and-forget; never throws. */
+export async function saveGameState(state) {
+  try {
+    await request('/api/game', { method: 'PUT', body: state, auth: true });
+  } catch (e) {
+    console.warn('saveGameState failed:', e);
+  }
+}
+
+/** Delete the saved game (used on reset). Never throws. */
+export async function clearGameState() {
+  try {
+    await request('/api/game', { method: 'DELETE', auth: true });
+  } catch (e) {
+    console.warn('clearGameState failed:', e);
+  }
 }
 
 export { BASE_URL };

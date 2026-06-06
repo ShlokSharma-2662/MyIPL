@@ -1,5 +1,4 @@
 import { initializeApp } from "firebase/app";
-import { getFirestore, doc, setDoc, getDoc, deleteDoc } from "firebase/firestore";
 import { getAnalytics } from "firebase/analytics";
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut } from "firebase/auth";
 
@@ -13,12 +12,11 @@ const firebaseConfig = {
   measurementId: "G-R36R594VNJ"
 };
 
-let app, analytics, db, auth, googleProvider;
+let app, analytics, auth, googleProvider;
 
 try {
   app = initializeApp(firebaseConfig);
   analytics = getAnalytics(app);
-  db = getFirestore(app);
   auth = getAuth(app);
   googleProvider = new GoogleAuthProvider();
 } catch (e) {
@@ -39,7 +37,7 @@ export function getDeviceId() {
   return localDeviceId;
 }
 
-export { analytics, db, auth };
+export { analytics, auth };
 
 // Returns the current user's Firebase ID token (a JWT) for authenticating
 // requests to the .NET backend, or null when signed out. Pass it as
@@ -71,40 +69,5 @@ export async function logoutGoogle() {
     window.location.reload();
   } catch (error) {
     console.error("Logout failed:", error);
-  }
-}
-
-export async function saveStateToFirebase(stateData) {
-  // Don't attempt to save if using placeholder config
-  if (firebaseConfig.apiKey === "YOUR_API_KEY") return;
-  
-  try {
-    await setDoc(doc(db, "simulations", getDeviceId()), stateData);
-  } catch (e) {
-    console.error("Error saving state to Firebase:", e);
-  }
-}
-
-export async function loadStateFromFirebase() {
-  if (firebaseConfig.apiKey === "YOUR_API_KEY") return null;
-
-  try {
-    const docSnap = await getDoc(doc(db, "simulations", getDeviceId()));
-    if (docSnap.exists()) {
-      return docSnap.data();
-    }
-  } catch (e) {
-    console.error("Error loading state from Firebase:", e);
-  }
-  return null;
-}
-
-export async function clearFirebaseState() {
-  if (firebaseConfig.apiKey === "YOUR_API_KEY") return;
-
-  try {
-    await deleteDoc(doc(db, "simulations", getDeviceId()));
-  } catch (e) {
-    console.error("Error clearing Firebase state:", e);
   }
 }

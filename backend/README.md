@@ -34,6 +34,9 @@ curl http://localhost:5288/api/health
 | POST | `/api/leaderboard/season` | ✅ | Submit a finished season |
 | GET  | `/api/profile/me` | ✅ | Signed-in user's career |
 | GET  | `/api/profile/{uid}` | — | Any user's public career |
+| GET  | `/api/game` | ✅ | Load the user's saved game (404 if none) |
+| PUT  | `/api/game` | ✅ | Create/replace the user's saved game |
+| DELETE | `/api/game` | ✅ | Delete the saved game (on reset) |
 
 Protected routes require `Authorization: Bearer <firebase-id-token>`. The UID is
 read from the verified token, never from the request body.
@@ -52,7 +55,12 @@ Already wired up in the React app:
 
 - `src/firebase.js` → `getIdToken()` returns the current user's JWT.
 - `src/api.js` → typed client: `submitSeason()`, `getLeaderboard()`,
-  `getMyProfile()`, `getProfile(uid)`.
+  `getMyProfile()`, `getProfile(uid)`, and the save game API
+  `getGameState()` / `saveGameState()` / `clearGameState()`.
+
+Game saves now persist to Postgres via the API (replacing the old Firestore
+save path), so they sync across devices and can store nested-array rosters that
+Firestore couldn't.
 - `.env.example` → set `VITE_API_URL` (defaults to `http://localhost:5288`).
 
 Example — submit a season when the user finishes one:
@@ -95,10 +103,21 @@ never in the repo. The only thing committed is the `<UserSecretsId>` GUID in the
 A free Postgres database is available on [Railway](https://railway.app),
 [Supabase](https://supabase.com), or [Neon](https://neon.tech).
 
-> The app uses `EnsureCreated()` for a frictionless first run (it makes the
-> `SeasonResults` table + indexes on first boot). Once you start evolving the
-> schema, switch to EF Core migrations:
-> `dotnet ef migrations add Init && dotnet ef database update`.
+### Schema management
+
+- **Postgres (production):** versioned **EF Core migrations** in `Migrations/`,
+  applied automatically on startup (`db.Database.Migrate()`). Add a migration
+  after changing an entity:
+  ```bash
+  dotnet ef migrations add <Name>     # commit the generated files
+  ```
+  It's applied on the next deploy — no manual `database update` needed.
+- **Local SQLite dev:** uses `EnsureCreated()` (recreates the schema on boot),
+  so migrations stay Postgres-only and you avoid multi-provider conflicts.
+
+> Migrating an older database that was first created with `EnsureCreated` (no
+> migration history) to migrations requires dropping its tables once so
+> `InitialCreate` can apply cleanly.
 
 ## Deploy
 
