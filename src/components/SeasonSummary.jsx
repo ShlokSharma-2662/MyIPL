@@ -1,8 +1,11 @@
-import React, { useRef } from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import { Trophy, Crown, Medal, Share2, RotateCcw, Star, Flame, Zap } from 'lucide-react';
 import TeamBadge from './TeamBadge';
 import { TEAMS } from '../data';
 import { USER_TEAM } from '../constants';
+import { submitSeason } from '../api';
+
+const SUBMITTED_KEY = 'myipl_submitted_seasons';
 
 const AwardCard = ({ title, icon: Icon, colorClass, borderClass, playerStat, primaryStat, secondaryStat }) => {
   if (!playerStat) return null;
@@ -25,8 +28,58 @@ const AwardCard = ({ title, icon: Icon, colorClass, borderClass, playerStat, pri
   );
 };
 
-export default function SeasonSummary({ champion, allPlayerStats, userName, tourney, onReset, playoff, userTeam, startChampionsLeague, clt20Active = false, startInternationalSeason }) {
+export default function SeasonSummary({ champion, allPlayerStats, userName, tourney, onReset, playoff, userTeam, startChampionsLeague, clt20Active = false, startInternationalSeason, teamRecord, season = 0 }) {
   const cardRef = useRef(null);
+  const [leaderboardStatus, setLeaderboardStatus] = useState('idle'); // idle | submitting | done | error
+
+  // Push the finished season to the global leaderboard exactly once. A
+  // per-season signature in localStorage survives reloads/tab switches so the
+  // same season is never submitted twice.
+  useEffect(() => {
+    if (!champion) return;
+
+    const signature = `${userName}|${userTeam}|S${season}|${champion}`;
+    let submitted = [];
+    try { submitted = JSON.parse(localStorage.getItem(SUBMITTED_KEY) || '[]'); } catch { submitted = []; }
+    if (submitted.includes(signature)) { setLeaderboardStatus('done'); return; }
+
+    const players = Object.values(allPlayerStats || {});
+    const oc = players.filter(s => s.runs > 0).sort((a, b) => b.runs - a.runs)[0];
+    const pc = players.filter(s => s.wkts > 0).sort((a, b) => b.wkts - a.wkts)[0];
+    const meStat = allPlayerStats?.[`USER:${userName}`];
+
+    let cancelled = false;
+    setLeaderboardStatus('submitting');
+    submitSeason({
+      userName,
+      team: userTeam,
+      champion,
+      won: champion === userTeam,
+      wins: teamRecord?.W ?? 0,
+      losses: teamRecord?.L ?? 0,
+      season,
+      orangeCapPlayer: oc?.player?.name ?? null,
+      orangeCapRuns: oc?.runs ?? 0,
+      purpleCapPlayer: pc?.player?.name ?? null,
+      purpleCapWickets: pc?.wkts ?? 0,
+      userRuns: meStat?.runs ?? 0,
+      userWickets: meStat?.wkts ?? 0,
+    })
+      .then(() => {
+        if (cancelled) return;
+        try { localStorage.setItem(SUBMITTED_KEY, JSON.stringify([...submitted, signature])); } catch { /* quota */ }
+        setLeaderboardStatus('done');
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        console.error('Leaderboard submit failed:', err);
+        setLeaderboardStatus('error');
+      });
+
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [champion, userName, userTeam, season]);
+
   if (!champion) return null;
 
   const qualifiedForCLT20 = !clt20Active && playoff && playoff.final && (playoff.final.home === userTeam || playoff.final.away === userTeam);
@@ -176,6 +229,20 @@ ${me ? `\n👤 ${userName}: ${me.runs} runs @ SR ${meSR} | ${me.wkts} wickets @ 
             </button>
           )}
         </div>
+
+        {leaderboardStatus !== 'idle' && (
+          <div className="text-center mt-5 relative z-10">
+            {leaderboardStatus === 'submitting' && (
+              <span className="text-[10px] tracking-[0.3em] text-zinc-500">SAVING TO GLOBAL LEADERBOARD…</span>
+            )}
+            {leaderboardStatus === 'done' && (
+              <span className="text-[10px] tracking-[0.3em] text-emerald-400">✓ SAVED TO GLOBAL LEADERBOARD</span>
+            )}
+            {leaderboardStatus === 'error' && (
+              <span className="text-[10px] tracking-[0.3em] text-zinc-600">COULDN'T REACH LEADERBOARD SERVER</span>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

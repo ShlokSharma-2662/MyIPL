@@ -1,5 +1,5 @@
 import React from 'react';
-import { Trophy, User, BarChart3, Calendar, Crown, BookOpen, Shield, Globe, Award } from 'lucide-react';
+import { Trophy, User, BarChart3, Calendar, Crown, BookOpen, Shield, Globe, Award, Users } from 'lucide-react';
 
 export default function TabNav({ tab, setTab, clt20Active = false, internationalActive = false }) {
   const tabs = internationalActive
@@ -15,6 +15,7 @@ export default function TabNav({ tab, setTab, clt20Active = false, international
         { id: 'me', label: 'My Profile', mobileLabel: 'Profile', icon: User },
         { id: 'teams', label: 'All Teams', mobileLabel: 'Teams', icon: Shield },
         { id: 'records', label: 'IPL Records', mobileLabel: 'Records', icon: Award },
+        { id: 'leaderboard', label: 'Leaderboard', mobileLabel: 'Ranks', icon: Users },
         { id: 'history', label: 'History', mobileLabel: 'History', icon: BookOpen },
         { id: 'playoffs', label: 'Playoffs', mobileLabel: 'Playoffs', icon: Trophy },
       ];

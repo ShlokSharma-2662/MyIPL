@@ -17,6 +17,7 @@ import SeasonSummary from './components/SeasonSummary';
 import GodModeAlert from './components/GodModeAlert';
 import HistoryView from './components/HistoryView';
 import RecordsView from './components/RecordsView';
+import LeaderboardView from './components/LeaderboardView';
 
 // Premium interactive features
 import MatchPreview from './components/MatchPreview';
@@ -188,9 +189,12 @@ function MainApp({ user }) {
                 startChampionsLeague={startChampionsLeague}
                 clt20Active={clt20Active}
                 startInternationalSeason={startInternationalSeason}
+                teamRecord={teamStats[userTeam]}
+                season={history.length}
               />
             )}
             {tab === 'table' && <PointsTable teamStats={teamStats} />}
+            {tab === 'leaderboard' && <LeaderboardView />}
             {tab === 'results' && <ResultsList results={results} onOpen={setOpenMatch} />}
             {tab === 'stats' && <StatsLeaderboards playerStats={allPlayerStats} />}
             {tab === 'international' && (

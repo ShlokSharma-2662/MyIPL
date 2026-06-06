@@ -41,6 +41,19 @@ export function getDeviceId() {
 
 export { analytics, db, auth };
 
+// Returns the current user's Firebase ID token (a JWT) for authenticating
+// requests to the .NET backend, or null when signed out. Pass it as
+// `Authorization: Bearer <token>`. Firebase refreshes the token automatically.
+export async function getIdToken() {
+  if (!auth || !auth.currentUser) return null;
+  try {
+    return await auth.currentUser.getIdToken();
+  } catch (error) {
+    console.error("Failed to get ID token:", error);
+    return null;
+  }
+}
+
 export async function loginWithGoogle() {
   if (!auth) return;
   try {
