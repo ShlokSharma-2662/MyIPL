@@ -185,17 +185,17 @@ export default function TransfersView({ state, actions }) {
         {/* Step 2: Choose Traded Player */}
         <div className="bg-slate-950/70 border border-slate-800/80 rounded-2xl p-5 space-y-4">
           <h3 className="text-base font-bold text-white flex items-center gap-2">
-            <span className="text-cyan-400">02.</span> Select Player to Swap (CSK)
+            <span className="text-cyan-400">02.</span> Select Player to Swap ({userTeam})
           </h3>
           <div className="space-y-3">
             {!targetPlayer ? (
               <div className="h-28 flex items-center justify-center border border-dashed border-slate-800/50 rounded-xl text-xs text-slate-600 italic">
-                Choose a target superstar first to load eligible CSK players of matching role
+                Choose a target superstar first to load eligible {userTeam} players of matching role
               </div>
             ) : (
               <div>
                 <label className="block text-xs uppercase tracking-wider text-slate-500 font-bold mb-1">
-                  CSK Player ({targetPlayer[1]} Options)
+                  {userTeam} Player ({targetPlayer[1]} Options)
                 </label>
                 <select 
                   value={userPlayerName}
@@ -261,7 +261,7 @@ export default function TransfersView({ state, actions }) {
                     {userPlayer[1]}
                   </span>
                   <h4 className="font-extrabold text-white text-xl mt-2 tracking-tight">{userPlayer[0]}</h4>
-                  <p className="text-xs text-slate-500">CSK franchise</p>
+                  <p className="text-xs text-slate-500">{userTeam} franchise</p>
                 </div>
 
                 <div className="flex justify-between items-end">
@@ -279,7 +279,7 @@ export default function TransfersView({ state, actions }) {
               </div>
             ) : (
               <div className="border border-dashed border-slate-800/60 rounded-2xl p-5 h-44 flex flex-col items-center justify-center text-slate-500 italic text-sm">
-                <span>Select a CSK player above to compare</span>
+                <span>Select a {userTeam} player above to compare</span>
               </div>
             )}
           </div>

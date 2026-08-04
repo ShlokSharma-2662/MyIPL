@@ -5,6 +5,7 @@ export const MAX_BALLS = 120;
 export const TOSS_FIELD_FIRST_PROB = IPL_AGGREGATES.toss.fieldFirstProb;
 export const MAX_BALLS_PER_BOWLER = 24;
 export const MAX_ACTIVE_BOWLERS = 6;
+// Default franchise for first-load / legacy saves. Runtime team comes from useTournament.userTeam.
 export const USER_TEAM = 'CSK';
 export const USER_BAT_SR = 200;
 export const USER_BAT_AVG = 85;

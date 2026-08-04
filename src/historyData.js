@@ -94,14 +94,19 @@ export const LEGACY_HISTORY = [
 
 import { IPL_AGGREGATES } from './data/iplAggregates';
 
-// Seed the All-Time Rivalry Meter with CSK's REAL head-to-head record from the
-// IPL ball-by-ball data (renamed franchises merged: DD→DC, KXIP→PBKS, etc.).
-export const LEGACY_RIVALRIES = (() => {
-  const csk = IPL_AGGREGATES.h2h.CSK || {};
+const FRANCHISE_IDS = ['CSK', 'MI', 'RCB', 'KKR', 'RR', 'SRH', 'DC', 'PBKS', 'LSG', 'GT'];
+
+/** Seed All-Time Rivalry Meter from real H2H for any franchise. */
+export function seedRivalriesForTeam(teamId = 'CSK') {
+  const row = IPL_AGGREGATES.h2h[teamId] || {};
   const out = {};
-  for (const opp of ['MI', 'RCB', 'KKR', 'RR', 'SRH', 'DC', 'PBKS', 'LSG', 'GT']) {
-    const r = csk[opp];
+  for (const opp of FRANCHISE_IDS) {
+    if (opp === teamId) continue;
+    const r = row[opp];
     if (r) out[opp] = { wins: r.w, losses: r.l };
   }
   return out;
-})();
+}
+
+// Default seed (CSK) for first load before the player picks a franchise.
+export const LEGACY_RIVALRIES = seedRivalriesForTeam('CSK');

@@ -1,66 +1,179 @@
-import React from 'react';
-import { Trophy, User, BarChart3, Calendar, Crown, BookOpen, Shield, Globe, Award, Users } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
+import {
+  Trophy, User, BarChart3, Calendar, Crown, BookOpen, Shield, Globe,
+  Award, Users, Dumbbell, ArrowLeftRight, Briefcase, MoreHorizontal, Check,
+} from 'lucide-react';
+
+const IPL_PRIMARY = [
+  { id: 'table', label: 'Table', icon: BarChart3 },
+  { id: 'results', label: 'Results', icon: Calendar },
+  { id: 'stats', label: 'Leaders', icon: Crown },
+  { id: 'me', label: 'Profile', icon: User },
+  { id: 'playoffs', label: 'Playoffs', icon: Trophy },
+];
+
+const IPL_MORE_GROUPS = [
+  {
+    title: 'Career',
+    items: [
+      { id: 'history', label: 'History', icon: BookOpen },
+      { id: 'records', label: 'IPL Records', icon: Award },
+      { id: 'leaderboard', label: 'Leaderboard', icon: Users },
+      { id: 'teams', label: 'All Teams', icon: Shield },
+    ],
+  },
+  {
+    title: 'Build',
+    items: [
+      { id: 'training', label: 'Training', icon: Dumbbell },
+      { id: 'transfers', label: 'Transfers', icon: ArrowLeftRight },
+      { id: 'boardroom', label: 'Boardroom', icon: Briefcase },
+    ],
+  },
+];
+
+const INTL_TABS = [
+  { id: 'international', label: 'Tour', icon: Globe },
+  { id: 'training', label: 'Training', icon: Dumbbell },
+  { id: 'me', label: 'Profile', icon: User },
+  { id: 'history', label: 'History', icon: BookOpen },
+];
 
 export default function TabNav({ tab, setTab, clt20Active = false, internationalActive = false }) {
-  const tabs = internationalActive
-    ? [
-        { id: 'international', label: 'International', mobileLabel: 'Intl', icon: Globe },
-        { id: 'me', label: 'My Profile', mobileLabel: 'Profile', icon: User },
-        { id: 'history', label: 'History', mobileLabel: 'History', icon: BookOpen },
-      ]
-    : [
-        { id: 'table', label: 'Points Table', mobileLabel: 'Table', icon: BarChart3 },
-        { id: 'results', label: 'Results', mobileLabel: 'Results', icon: Calendar },
-        { id: 'stats', label: 'Orange / Purple', mobileLabel: 'Leaders', icon: Crown },
-        { id: 'me', label: 'My Profile', mobileLabel: 'Profile', icon: User },
-        { id: 'teams', label: 'All Teams', mobileLabel: 'Teams', icon: Shield },
-        { id: 'records', label: 'IPL Records', mobileLabel: 'Records', icon: Award },
-        { id: 'leaderboard', label: 'Leaderboard', mobileLabel: 'Ranks', icon: Users },
-        { id: 'history', label: 'History', mobileLabel: 'History', icon: BookOpen },
-        { id: 'playoffs', label: 'Playoffs', mobileLabel: 'Playoffs', icon: Trophy },
-      ];
+  const [moreOpen, setMoreOpen] = useState(false);
+  const moreRef = useRef(null);
 
-  const activeColorClass = internationalActive
-    ? 'text-blue-400 border-blue-500'
-    : clt20Active 
-      ? 'text-cyan-400 border-cyan-500' 
-      : 'text-amber-400 border-amber-500';
+  const moreIds = IPL_MORE_GROUPS.flatMap(g => g.items.map(i => i.id));
+  const moreActive = !internationalActive && moreIds.includes(tab);
+  const activeMoreItem = moreActive
+    ? IPL_MORE_GROUPS.flatMap(g => g.items).find(i => i.id === tab)
+    : null;
+  const ActiveMoreIcon = activeMoreItem?.icon;
 
-  const activeBgClass = internationalActive
-    ? 'bg-blue-500/5'
-    : clt20Active 
-      ? 'bg-cyan-500/5' 
-      : 'bg-amber-500/5';
+  useEffect(() => {
+    setMoreOpen(false);
+  }, [tab, internationalActive]);
+
+  useEffect(() => {
+    if (!moreOpen) return;
+    const onPointer = (e) => {
+      if (moreRef.current && !moreRef.current.contains(e.target)) {
+        setMoreOpen(false);
+      }
+    };
+    const onKey = (e) => {
+      if (e.key === 'Escape') setMoreOpen(false);
+    };
+    document.addEventListener('mousedown', onPointer);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onPointer);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [moreOpen]);
+
+  const accent = internationalActive
+    ? { text: 'text-blue-400', soft: 'bg-blue-500/10', ring: 'ring-blue-500/30' }
+    : clt20Active
+      ? { text: 'text-cyan-400', soft: 'bg-cyan-500/10', ring: 'ring-cyan-500/30' }
+      : { text: 'text-amber-400', soft: 'bg-amber-500/10', ring: 'ring-amber-500/30' };
+
+  const primaryTabs = internationalActive ? INTL_TABS : IPL_PRIMARY;
+
+  const TabButton = ({ item, active }) => {
+    const Icon = item.icon;
+    return (
+      <button
+        type="button"
+        onClick={() => setTab(item.id)}
+        className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-[11px] font-semibold tracking-wide transition-colors
+          ${active
+            ? `${accent.text} ${accent.soft} ring-1 ${accent.ring}`
+            : 'text-zinc-500 hover:text-zinc-200 hover:bg-white/5'
+          }`}
+      >
+        <Icon className="w-3.5 h-3.5 shrink-0" />
+        <span>{item.label}</span>
+      </button>
+    );
+  };
 
   return (
-    <div className="border-b border-zinc-800/50 bg-black/40 backdrop-blur-md sticky top-[60px] z-20">
-      <div className="max-w-7xl mx-auto px-4 relative">
-        <div
-          className="absolute left-0 top-0 bottom-0 w-6 bg-gradient-to-r from-black/70 to-transparent pointer-events-none z-10 sm:hidden"
-          aria-hidden="true"
-        />
-        <div
-          className="absolute right-0 top-0 bottom-0 w-6 bg-gradient-to-l from-black/70 to-transparent pointer-events-none z-10 sm:hidden"
-          aria-hidden="true"
-        />
-        <div className="flex gap-1 overflow-x-auto no-scrollbar snap-x snap-mandatory">
-        {tabs.map(t => {
-          const Icon = t.icon;
-          const active = tab === t.id;
-          return (
-            <button
-              key={t.id}
-              onClick={() => setTab(t.id)}
-              className={`snap-start px-4 py-4 text-xs tracking-wider font-semibold whitespace-nowrap border-b-2 transition-all flex items-center gap-2 relative group
-                ${active ? activeColorClass : 'text-zinc-500 hover:text-zinc-200 border-transparent'}`}
-            >
-              <Icon className={`w-3.5 h-3.5 transition-transform ${active ? 'scale-110' : 'group-hover:scale-110'}`} />
-              <span className="sm:hidden">{(t.mobileLabel || t.label).toUpperCase()}</span>
-              <span className="hidden sm:inline">{t.label.toUpperCase()}</span>
-              {active && <div className={`absolute inset-0 ${activeBgClass} -z-10`} />}
-            </button>
-          );
-        })}
+    <div className="border-b border-zinc-800/50 bg-black/50 backdrop-blur-md sticky top-[60px] z-20">
+      <div className="max-w-7xl mx-auto px-3 sm:px-4">
+        <div className="flex items-center gap-1 py-2">
+          <nav className="flex items-center gap-0.5 flex-1 min-w-0 overflow-x-auto no-scrollbar">
+            {primaryTabs.map((item) => (
+              <TabButton key={item.id} item={item} active={tab === item.id} />
+            ))}
+          </nav>
+
+          {!internationalActive && (
+            <div className="relative shrink-0 pl-1 ml-1 border-l border-zinc-800" ref={moreRef}>
+              <button
+                type="button"
+                aria-expanded={moreOpen}
+                aria-haspopup="menu"
+                onClick={() => setMoreOpen(v => !v)}
+                className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-[11px] font-semibold tracking-wide transition-colors
+                  ${moreActive || moreOpen
+                    ? `${accent.text} ${accent.soft} ring-1 ${accent.ring}`
+                    : 'text-zinc-500 hover:text-zinc-200 hover:bg-white/5'
+                  }`}
+              >
+                {activeMoreItem ? (
+                  <>
+                    {ActiveMoreIcon && <ActiveMoreIcon className="w-3.5 h-3.5" />}
+                    <span className="max-w-[5.5rem] truncate">{activeMoreItem.label}</span>
+                  </>
+                ) : (
+                  <>
+                    <MoreHorizontal className="w-3.5 h-3.5" />
+                    <span>More</span>
+                  </>
+                )}
+              </button>
+
+              {moreOpen && (
+                <div
+                  role="menu"
+                  className="absolute right-0 top-full mt-2 w-56 rounded-xl border border-zinc-800 bg-zinc-950/95 backdrop-blur-xl shadow-2xl p-1.5 z-50 animate-fade-in"
+                >
+                  {IPL_MORE_GROUPS.map((group) => (
+                    <div key={group.title} className="mb-1 last:mb-0">
+                      <div className="px-2.5 pt-2 pb-1 text-[9px] tracking-[0.2em] uppercase text-zinc-600 font-bold">
+                        {group.title}
+                      </div>
+                      {group.items.map((item) => {
+                        const Icon = item.icon;
+                        const active = tab === item.id;
+                        return (
+                          <button
+                            key={item.id}
+                            type="button"
+                            role="menuitem"
+                            onClick={() => {
+                              setTab(item.id);
+                              setMoreOpen(false);
+                            }}
+                            className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-left text-xs transition-colors
+                              ${active
+                                ? `${accent.text} ${accent.soft}`
+                                : 'text-zinc-300 hover:bg-white/5 hover:text-zinc-100'
+                              }`}
+                          >
+                            <Icon className="w-3.5 h-3.5 shrink-0 opacity-80" />
+                            <span className="flex-1 font-medium">{item.label}</span>
+                            {active && <Check className={`w-3.5 h-3.5 ${accent.text}`} />}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </div>

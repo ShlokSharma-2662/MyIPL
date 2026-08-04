@@ -1,13 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { Coins, Swords, CheckCircle2 } from 'lucide-react';
+import { Coins } from 'lucide-react';
 import TeamBadge from './TeamBadge';
-import { USER_TEAM } from '../constants';
 
-export default function TossModal({ toss, onChoose }) {
+export default function TossModal({ toss, onChoose, userTeam }) {
   if (!toss) return null;
 
-  const opponent = toss.home === USER_TEAM ? toss.away : toss.home;
-  const isUserWinner = toss.tossWinner === USER_TEAM;
+  const opponent = toss.home === userTeam ? toss.away : toss.home;
+  const isUserWinner = toss.tossWinner === userTeam;
 
   // Toss steps: 'guess' | 'flipping' | 'result'
   const [step, setStep] = useState('guess');
@@ -59,7 +58,7 @@ export default function TossModal({ toss, onChoose }) {
         </div>
 
         <div className="flex items-center justify-center gap-3 mb-6 relative z-10">
-          <TeamBadge teamId={USER_TEAM} size="sm" />
+          <TeamBadge teamId={userTeam} size="sm" />
           <span className="text-zinc-500 text-xs font-mono">vs</span>
           <TeamBadge teamId={opponent} size="sm" />
         </div>

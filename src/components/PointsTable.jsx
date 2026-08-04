@@ -1,10 +1,9 @@
 import React from 'react';
 import TeamBadge from './TeamBadge';
 import { TEAMS } from '../data';
-import { USER_TEAM } from '../constants';
 import { computeNRR } from '../stats';
 
-export default function PointsTable({ teamStats }) {
+export default function PointsTable({ teamStats, userTeam }) {
   const rows = Object.entries(teamStats).map(([id, s]) => {
     const nrr = computeNRR(s);
     return { id, ...s, NRR: nrr };
@@ -29,7 +28,7 @@ export default function PointsTable({ teamStats }) {
           {rows.map((r, i) => {
             const team = TEAMS.find(t => t.id === r.id);
             const qualified = i < 4;
-            const isUser = r.id === USER_TEAM;
+            const isUser = r.id === userTeam;
             return (
               <tr key={r.id} className={`border-b border-zinc-900/50 transition-all hover:bg-white/5 hover:scale-[1.01] ${isUser ? 'bg-amber-500/5' : ''}`}>
                 <td className="py-3 px-3 font-mono text-xs text-zinc-400">
@@ -42,7 +41,7 @@ export default function PointsTable({ teamStats }) {
                   <div className="flex items-center gap-3">
                     <TeamBadge teamId={r.id} size="sm" />
                     <div>
-                      <div className="text-sm font-semibold text-zinc-100">{team.name}</div>
+                      <div className="text-sm font-semibold text-zinc-100">{team?.name || r.id}</div>
                       {isUser && <div className="text-[9px] text-amber-400 tracking-widest font-bold">YOUR TEAM</div>}
                     </div>
                   </div>

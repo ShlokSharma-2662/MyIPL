@@ -140,6 +140,31 @@ npm run build
 npm run preview
 ```
 
+### Docker (full stack)
+
+Runs the React SPA (nginx), the .NET API, and Postgres together:
+
+```bash
+docker compose up --build
+```
+
+| Service  | URL |
+|----------|-----|
+| Frontend | http://localhost:3000 |
+| API      | http://localhost:8080 |
+| Postgres | `localhost:5432` (user/pass/db: `myipl`) |
+
+The web container proxies `/api/*` to the API, so the browser stays same-origin. Google login still needs your Firebase project configured.
+
+API-only (e.g. while developing the Vite app locally against containerized Postgres):
+
+```bash
+docker compose up --build db api
+# then: set VITE_API_URL=http://localhost:8080 and npm run dev
+```
+
+The existing Railway deploy still uses `backend/MyIPL.Api/Dockerfile` unchanged.
+
 ---
 
 ## How a Match is Simulated

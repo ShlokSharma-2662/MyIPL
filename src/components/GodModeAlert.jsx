@@ -1,9 +1,8 @@
 import React from 'react';
 import { Zap } from 'lucide-react';
 import TeamBadge from './TeamBadge';
-import { USER_TEAM } from '../constants';
 
-export default function GodModeAlert({ alerts, onDismiss }) {
+export default function GodModeAlert({ alerts, onDismiss, userTeam }) {
   if (!alerts || alerts.length === 0) return null;
 
   return (
@@ -35,7 +34,7 @@ export default function GodModeAlert({ alerts, onDismiss }) {
                 <span className="text-amber-400 font-bold font-mono">Match #{alerts[0].matchNum}</span>
                 <span className="text-zinc-500">•</span>
                 <div className="flex items-center gap-2">
-                  <TeamBadge teamId={USER_TEAM} size="sm" />
+                  <TeamBadge teamId={userTeam} size="sm" />
                   <span className="text-zinc-400 text-xs">vs</span>
                   <TeamBadge teamId={alerts[0].opp} size="sm" />
                 </div>

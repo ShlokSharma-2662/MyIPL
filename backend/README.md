@@ -25,6 +25,24 @@ first run it creates `myipl.db` (SQLite) automatically. Quick check:
 curl http://localhost:5288/api/health
 ```
 
+### Docker
+
+From the **repo root** (API + Postgres + frontend):
+
+```bash
+docker compose up --build
+```
+
+API-only with Postgres:
+
+```bash
+docker compose up --build db api
+curl http://localhost:8080/api/health
+```
+
+The API image is `backend/MyIPL.Api/Dockerfile` (also used by Railway). Compose
+sets `DATABASE_URL` to the `db` service and `PORT=8080`.
+
 ## Endpoints
 
 | Method | Route | Auth | Purpose |

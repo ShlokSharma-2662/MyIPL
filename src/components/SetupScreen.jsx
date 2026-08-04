@@ -1,70 +1,94 @@
 import React, { useState } from 'react';
 import { USER_BAT_SR, USER_BOWL_SR, USER_BOWL_ECON } from '../constants';
 import { TEAMS } from '../data';
+import { applyAccentVars, resolveAccent, contrastOn } from '../theme';
 
 export default function SetupScreen({ onStart }) {
   const [name, setName] = useState('Shlok');
   const [tourney, setTourney] = useState('Indian Premier League');
   const [team, setTeam] = useState('CSK');
 
+  const selectTeam = (id) => {
+    setTeam(id);
+    applyAccentVars(resolveAccent({ userTeam: id }));
+  };
+
   return (
-    <div className="min-h-[75vh] flex items-center justify-center px-4 animate-fade-in relative">
-      <div className="absolute inset-0 flex items-center justify-center pointer-events-none overflow-hidden">
-        <div className="w-[500px] h-[500px] bg-amber-500/10 rounded-full blur-[120px] mix-blend-screen" />
-        <div className="w-[400px] h-[400px] bg-fuchsia-500/10 rounded-full blur-[100px] mix-blend-screen -ml-[200px]" />
-      </div>
-      <div className="max-w-lg w-full glass-panel rounded-2xl p-10 relative z-10 animate-slide-up">
-        <div className="absolute top-0 inset-x-0 h-[2px] bg-gradient-to-r from-transparent via-amber-500 to-transparent opacity-50" />
-        <div className="mb-3 text-[10px] tracking-[0.3em] text-amber-500 font-bold">TOURNAMENT SETUP</div>
-        <h1 className="text-5xl font-black mb-2 bg-gradient-to-br from-white to-zinc-500 text-transparent bg-clip-text" style={{ fontFamily: 'Bebas Neue' }}>
+    <div className="min-h-[75vh] flex items-center justify-center px-4 py-10 animate-fade-in relative">
+      <div
+        className="absolute inset-0 pointer-events-none"
+        style={{ background: 'radial-gradient(ellipse 60% 40% at 50% 20%, var(--accent-wash), transparent 70%)' }}
+      />
+      <div className="max-w-lg w-full surface-1 border border-[var(--stroke)] rounded-2xl p-8 sm:p-10 relative z-10 animate-slide-up">
+        <div className="h-1 absolute top-0 inset-x-0 rounded-t-2xl" style={{ background: 'var(--accent)' }} />
+        <div className="mb-2 text-[10px] tracking-[0.3em] accent-text font-bold">TOURNAMENT SETUP</div>
+        <h1 className="text-5xl font-black mb-2 text-zinc-50" style={{ fontFamily: 'Bebas Neue' }}>
           BUILD YOUR LEGEND.
         </h1>
         <p className="text-zinc-400 text-sm mb-8 leading-relaxed">
-          You'll open the innings for your team with elite stats — strike rate {USER_BAT_SR}, bowl SR {USER_BOWL_SR}, economy {USER_BOWL_ECON}. Other players have form swings each match.
+          Pick any franchise and open the innings — SR {USER_BAT_SR}, bowl SR {USER_BOWL_SR}, economy {USER_BOWL_ECON}.
         </p>
 
-        <label className="block mb-5 group">
-          <span className="text-xs tracking-wider text-zinc-400 block mb-2 group-focus-within:text-amber-400 transition-colors">PLAYER NAME</span>
+        <label className="block mb-5">
+          <span className="text-xs tracking-wider text-zinc-400 block mb-2">PLAYER NAME</span>
           <input
             value={name}
-            onChange={e => setName(e.target.value)}
-            className="w-full bg-black/40 border border-zinc-800 rounded-lg px-4 py-3 text-zinc-100 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500/50 font-mono transition-all shadow-inner"
+            onChange={(e) => setName(e.target.value)}
+            className="w-full surface-2 border border-[var(--stroke)] rounded-lg px-4 py-3 text-zinc-100 focus:outline-none focus:border-[var(--accent)] font-mono"
           />
         </label>
 
-        <label className="block mb-5 group">
-          <span className="text-xs tracking-wider text-zinc-400 block mb-2 group-focus-within:text-amber-400 transition-colors">YOUR TEAM</span>
-          <select
-            value={team}
-            onChange={e => setTeam(e.target.value)}
-            className="w-full bg-black/40 border border-zinc-800 rounded-lg px-4 py-3 text-zinc-100 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500/50 font-mono transition-all shadow-inner appearance-none"
-          >
-            {TEAMS.map(t => (
-              <option key={t.id} value={t.id} className="bg-zinc-900 text-zinc-100">{t.name} ({t.id})</option>
-            ))}
-          </select>
-        </label>
+        <div className="mb-5">
+          <span className="text-xs tracking-wider text-zinc-400 block mb-3">YOUR FRANCHISE</span>
+          <div className="grid grid-cols-5 gap-2">
+            {TEAMS.map((t) => {
+              const selected = team === t.id;
+              return (
+                <button
+                  key={t.id}
+                  type="button"
+                  title={t.name}
+                  onClick={() => selectTeam(t.id)}
+                  className={`aspect-square rounded-lg border-2 flex flex-col items-center justify-center gap-0.5 transition-transform hover:scale-[1.03]
+                    ${selected ? 'scale-[1.03]' : 'border-transparent opacity-80 hover:opacity-100'}`}
+                  style={{
+                    backgroundColor: t.primary,
+                    color: contrastOn(t.primary),
+                    borderColor: selected ? '#fafafa' : 'transparent',
+                    boxShadow: selected ? `0 0 0 2px ${t.primary}` : undefined,
+                  }}
+                >
+                  <span className="text-[10px] sm:text-xs font-black leading-none">{t.short}</span>
+                </button>
+              );
+            })}
+          </div>
+          <p className="text-[11px] text-zinc-500 mt-2">
+            {TEAMS.find((t) => t.id === team)?.name}
+          </p>
+        </div>
 
-        <label className="block mb-8 group">
-          <span className="text-xs tracking-wider text-zinc-400 block mb-2 group-focus-within:text-amber-400 transition-colors">TOURNAMENT NAME</span>
+        <label className="block mb-8">
+          <span className="text-xs tracking-wider text-zinc-400 block mb-2">TOURNAMENT NAME</span>
           <input
             value={tourney}
-            onChange={e => setTourney(e.target.value)}
-            className="w-full bg-black/40 border border-zinc-800 rounded-lg px-4 py-3 text-zinc-100 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500/50 font-mono transition-all shadow-inner"
+            onChange={(e) => setTourney(e.target.value)}
+            className="w-full surface-2 border border-[var(--stroke)] rounded-lg px-4 py-3 text-zinc-100 focus:outline-none focus:border-[var(--accent)] font-mono"
           />
         </label>
 
         <button
+          type="button"
           onClick={() => onStart(name.trim() || 'You', tourney.trim() || 'Fantasy IPL', team)}
-          className="w-full bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 transition-all duration-300 text-black font-bold py-4 rounded-lg tracking-widest text-sm shadow-[0_0_20px_rgba(245,158,11,0.3)] hover:shadow-[0_0_30px_rgba(245,158,11,0.5)] hover:-translate-y-0.5"
+          className="btn-accent w-full py-4 tracking-widest text-sm"
         >
           START SEASON →
         </button>
 
-        <div className="mt-8 pt-6 border-t border-zinc-800/50 text-xs text-zinc-500 space-y-2 font-medium">
-          <div className="flex items-center gap-2"><div className="w-1 h-1 rounded-full bg-zinc-600" /> 10 teams • 70 league matches • 14 per side</div>
-          <div className="flex items-center gap-2"><div className="w-1 h-1 rounded-full bg-zinc-600" /> Top 4 → Qualifier 1, Eliminator, Qualifier 2, Final</div>
-          <div className="flex items-center gap-2"><div className="w-1 h-1 rounded-full bg-zinc-600" /> Call the toss when your team wins it • progress auto-saves</div>
+        <div className="mt-8 pt-6 border-t border-[var(--stroke)] text-xs text-zinc-500 space-y-2 font-medium">
+          <div>10 teams · 70 league matches · 14 per side</div>
+          <div>Top 4 → Qualifier 1, Eliminator, Qualifier 2, Final</div>
+          <div>Call the toss when your team wins · progress auto-saves</div>
         </div>
       </div>
     </div>

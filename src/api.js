@@ -2,7 +2,8 @@
 // Base URL comes from VITE_API_URL (see .env), falling back to local dev.
 import { getIdToken } from './firebase';
 
-const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5288';
+// Empty string = same-origin (nginx /api proxy in Docker). Unset → local API.
+const BASE_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:5288';
 
 async function request(path, { method = 'GET', body, auth = false } = {}) {
   const headers = { 'Content-Type': 'application/json' };
