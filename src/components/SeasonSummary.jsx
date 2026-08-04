@@ -1,9 +1,9 @@
 import React, { useRef, useState, useEffect } from 'react';
-import { Trophy, Crown, Medal, Share2, RotateCcw, Star, Flame, Zap } from 'lucide-react';
+import { Trophy, Crown, Medal, Share2, RotateCcw, Star, Flame, Zap, Download } from 'lucide-react';
 import TeamBadge from './TeamBadge';
 import { TEAMS } from '../data';
-import { USER_TEAM } from '../constants';
 import { submitSeason } from '../api';
+import { downloadSeasonCardPng } from '../utils/seasonCardPng';
 
 const SUBMITTED_KEY = 'myipl_submitted_seasons';
 
@@ -31,10 +31,8 @@ const AwardCard = ({ title, icon: Icon, colorClass, borderClass, playerStat, pri
 export default function SeasonSummary({ champion, allPlayerStats, userName, tourney, onReset, playoff, userTeam, startChampionsLeague, clt20Active = false, startInternationalSeason, teamRecord, season = 0 }) {
   const cardRef = useRef(null);
   const [leaderboardStatus, setLeaderboardStatus] = useState('idle'); // idle | submitting | done | error
+  const [pngStatus, setPngStatus] = useState('idle'); // idle | saving | done | error
 
-  // Push the finished season to the global leaderboard exactly once. A
-  // per-season signature in localStorage survives reloads/tab switches so the
-  // same season is never submitted twice.
   useEffect(() => {
     if (!champion) return;
 
@@ -97,16 +95,19 @@ export default function SeasonSummary({ champion, allPlayerStats, userName, tour
     .filter(s => s.runs >= 100)
     .sort((a, b) => (b.runs / b.balls) - (a.runs / a.balls))[0];
 
-  const cskWon = champion === USER_TEAM;
+  const userWon = champion === userTeam;
   const meSR = me && me.balls > 0 ? ((me.runs / me.balls) * 100).toFixed(1) : '-';
   const meEcon = me && me.ballsBowled > 0 ? (me.runsConceded / (me.ballsBowled / 6)).toFixed(2) : '-';
+  const recordLine = teamRecord
+    ? `${teamRecord.W ?? 0}W – ${teamRecord.L ?? 0}L`
+    : '';
 
-  const shareText = `🏆 ${tourney} — ${championTeam.name} are CHAMPIONS!
-${cskWon ? '🎉 WE DID IT! CSK lifted the trophy!' : ''}
+  const shareText = `🏆 ${tourney} — ${championTeam?.name || champion} are CHAMPIONS!
+${userWon ? `🎉 WE DID IT! ${userTeam} lifted the trophy!` : ''}
 🧡 Orange Cap: ${orangeCap?.player.name} (${orangeCap?.runs} runs)
 💜 Purple Cap: ${purpleCap?.player.name} (${purpleCap?.wkts} wickets)
 ⭐ MVP: ${mvp?.player.name}
-${me ? `\n👤 ${userName}: ${me.runs} runs @ SR ${meSR} | ${me.wkts} wickets @ econ ${meEcon}` : ''}`;
+${me ? `\n👤 ${userName} (${userTeam}): ${me.runs} runs @ SR ${meSR} | ${me.wkts} wickets @ econ ${meEcon}` : ''}`;
 
   const onShare = async () => {
     try {
@@ -118,6 +119,34 @@ ${me ? `\n👤 ${userName}: ${me.runs} runs @ SR ${meSR} | ${me.wkts} wickets @ 
       }
     } catch {
       /* user cancelled */
+    }
+  };
+
+  const onDownloadPng = async () => {
+    setPngStatus('saving');
+    try {
+      await downloadSeasonCardPng({
+        tourney,
+        championName: championTeam?.name,
+        championId: champion,
+        championColor: championTeam?.primary || '#F59E0B',
+        userName,
+        userTeam,
+        userWon,
+        runs: me?.runs ?? 0,
+        sr: meSR,
+        wickets: me?.wkts ?? 0,
+        econ: meEcon,
+        orangeCap: orangeCap ? `${orangeCap.player.name} (${orangeCap.runs})` : null,
+        purpleCap: purpleCap ? `${purpleCap.player.name} (${purpleCap.wkts})` : null,
+        recordLine,
+      }, `myipl-${userTeam}-s${season || 1}.png`);
+      setPngStatus('done');
+      setTimeout(() => setPngStatus('idle'), 2500);
+    } catch (err) {
+      console.error(err);
+      setPngStatus('error');
+      setTimeout(() => setPngStatus('idle'), 2500);
     }
   };
 
@@ -135,14 +164,14 @@ ${me ? `\n👤 ${userName}: ${me.runs} runs @ SR ${meSR} | ${me.wkts} wickets @ 
             <TeamBadge teamId={champion} size="lg" />
             <div className="text-left">
               <div className="text-[10px] tracking-[0.3em] text-amber-400 font-bold">CHAMPIONS</div>
-              <div className="text-2xl font-black" style={{ fontFamily: 'Bebas Neue', color: championTeam.primary }}>
-                {championTeam.name}
+              <div className="text-2xl font-black" style={{ fontFamily: 'Bebas Neue', color: championTeam?.primary }}>
+                {championTeam?.name || champion}
               </div>
             </div>
           </div>
-          {cskWon && (
+          {userWon && (
             <div className="mt-4 inline-block bg-amber-500/20 border border-amber-500/40 text-amber-300 text-xs font-bold tracking-widest px-4 py-2 rounded-full">
-              🎉 YOU DID IT, {userName.toUpperCase()}
+              YOU DID IT, {userName.toUpperCase()} — {userTeam}
             </div>
           )}
         </div>
@@ -150,34 +179,34 @@ ${me ? `\n👤 ${userName}: ${me.runs} runs @ SR ${meSR} | ${me.wkts} wickets @ 
         <div className="relative z-10 mb-8">
           <div className="text-xs tracking-[0.3em] text-zinc-500 font-bold mb-4 text-center">SEASON AWARDS</div>
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            <AwardCard 
+            <AwardCard
               title="Orange Cap" icon={Crown} colorClass="text-orange-400" borderClass="border-orange-500/30"
-              playerStat={orangeCap} primaryStat={`${orangeCap?.runs} runs`} secondaryStat={`${orangeCap?.M} matches`} 
+              playerStat={orangeCap} primaryStat={`${orangeCap?.runs} runs`} secondaryStat={`${orangeCap?.M} matches`}
             />
-            <AwardCard 
+            <AwardCard
               title="Purple Cap" icon={Medal} colorClass="text-fuchsia-400" borderClass="border-fuchsia-500/30"
-              playerStat={purpleCap} primaryStat={`${purpleCap?.wkts} wickets`} secondaryStat={`${purpleCap?.M} matches`} 
+              playerStat={purpleCap} primaryStat={`${purpleCap?.wkts} wickets`} secondaryStat={`${purpleCap?.M} matches`}
             />
-            <AwardCard 
+            <AwardCard
               title="Most Valuable" icon={Star} colorClass="text-yellow-400" borderClass="border-yellow-500/30"
-              playerStat={mvp} primaryStat={`${mvp?.runs}R, ${mvp?.wkts}W`} secondaryStat={`${mvp?.M} matches`} 
+              playerStat={mvp} primaryStat={`${mvp?.runs}R, ${mvp?.wkts}W`} secondaryStat={`${mvp?.M} matches`}
             />
-            <AwardCard 
+            <AwardCard
               title="Maximum Sixes" icon={Flame} colorClass="text-red-400" borderClass="border-red-500/30"
-              playerStat={maxSixes} primaryStat={`${maxSixes?.sixes} sixes`} secondaryStat={`${maxSixes?.M} matches`} 
+              playerStat={maxSixes} primaryStat={`${maxSixes?.sixes} sixes`} secondaryStat={`${maxSixes?.M} matches`}
             />
-            <AwardCard 
+            <AwardCard
               title="Super Striker" icon={Zap} colorClass="text-cyan-400" borderClass="border-cyan-500/30"
-              playerStat={superStriker} 
-              primaryStat={`SR ${superStriker ? ((superStriker.runs / superStriker.balls) * 100).toFixed(1) : 0}`} 
-              secondaryStat={`${superStriker?.runs} runs`} 
+              playerStat={superStriker}
+              primaryStat={`SR ${superStriker ? ((superStriker.runs / superStriker.balls) * 100).toFixed(1) : 0}`}
+              secondaryStat={`${superStriker?.runs} runs`}
             />
           </div>
         </div>
 
         {me && (
           <div className="bg-black/40 border border-zinc-800 rounded-xl p-4 relative z-10 mb-6">
-            <div className="text-[10px] tracking-[0.3em] text-zinc-400 font-bold mb-3">YOUR SEASON — {userName.toUpperCase()}</div>
+            <div className="text-[10px] tracking-[0.3em] text-zinc-400 font-bold mb-3">YOUR SEASON — {userName.toUpperCase()} · {userTeam}</div>
             <div className="grid grid-cols-4 gap-3 text-center">
               <div>
                 <div className="text-2xl font-black text-amber-400" style={{ fontFamily: 'Bebas Neue' }}>{me.runs}</div>
@@ -204,7 +233,15 @@ ${me ? `\n👤 ${userName}: ${me.runs} runs @ SR ${meSR} | ${me.wkts} wickets @ 
             onClick={onShare}
             className="bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-white font-bold px-5 py-2.5 rounded-lg tracking-wider text-xs flex items-center gap-2 transition-all hover:-translate-y-0.5"
           >
-            <Share2 className="w-3.5 h-3.5" /> SHARE
+            <Share2 className="w-3.5 h-3.5" /> SHARE TEXT
+          </button>
+          <button
+            onClick={onDownloadPng}
+            disabled={pngStatus === 'saving'}
+            className="bg-zinc-800 hover:bg-zinc-700 border border-amber-500/40 text-amber-300 font-bold px-5 py-2.5 rounded-lg tracking-wider text-xs flex items-center gap-2 transition-all hover:-translate-y-0.5 disabled:opacity-60"
+          >
+            <Download className="w-3.5 h-3.5" />
+            {pngStatus === 'saving' ? 'RENDERING…' : pngStatus === 'done' ? 'PNG SAVED' : pngStatus === 'error' ? 'PNG FAILED' : 'SAVE PNG'}
           </button>
           <button
             onClick={onReset}
@@ -217,7 +254,7 @@ ${me ? `\n👤 ${userName}: ${me.runs} runs @ SR ${meSR} | ${me.wkts} wickets @ 
               onClick={startInternationalSeason}
               className="bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-400 hover:to-indigo-500 text-white font-bold px-5 py-2.5 rounded-lg tracking-wider text-xs flex items-center gap-2 transition-all hover:-translate-y-0.5 shadow-lg shadow-blue-500/20 border border-blue-400/20"
             >
-              🚀 START INTERNATIONAL SEASON
+              START INTERNATIONAL SEASON
             </button>
           )}
           {qualifiedForCLT20 && (
@@ -225,7 +262,7 @@ ${me ? `\n👤 ${userName}: ${me.runs} runs @ SR ${meSR} | ${me.wkts} wickets @ 
               onClick={startChampionsLeague}
               className="bg-gradient-to-r from-cyan-500 to-cyan-600 hover:from-cyan-400 hover:to-cyan-500 text-slate-950 font-black px-5 py-2.5 rounded-lg tracking-wider text-xs flex items-center gap-2 transition-all hover:-translate-y-0.5 shadow-lg shadow-cyan-500/35 border border-cyan-400/25 animate-pulse"
             >
-              🚀 ENTER CHAMPIONS LEAGUE
+              ENTER CHAMPIONS LEAGUE
             </button>
           )}
         </div>

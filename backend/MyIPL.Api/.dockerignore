@@ -1,8 +1,12 @@
-bin/
-obj/
+bin
+obj
 *.db
 *.db-shm
 *.db-wal
+.vs
 *.user
-.vs/
-appsettings.*.local.json
+*.md
+Dockerfile*
+railway.json
+Properties/launchSettings.json
+MyIPL.Api.http

@@ -13,10 +13,18 @@ RUN dotnet publish -c Release -o /app/publish /p:UseAppHost=false
 # --- Runtime stage -------------------------------------------------------
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS final
 WORKDIR /app
+
+# curl powers the compose healthcheck (and is handy for debugging).
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends curl \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY --from=build /app/publish ./
 
 ENV ASPNETCORE_ENVIRONMENT=Production
-# Railway overrides this with its own $PORT, which Program.cs binds to.
+# Default listen port for Docker / local containers. Railway overrides via $PORT
+# (Program.cs binds Kestrel to PORT when set).
+ENV PORT=8080
 EXPOSE 8080
 
 ENTRYPOINT ["dotnet", "MyIPL.Api.dll"]

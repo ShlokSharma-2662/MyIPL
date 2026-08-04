@@ -2,14 +2,18 @@ import React from 'react';
 
 export default function PhasePill({ phase }) {
   const map = {
-    setup: { label: 'SETUP', color: 'bg-zinc-700' },
-    league: { label: 'LEAGUE STAGE', color: 'bg-amber-600' },
-    playoffs: { label: 'PLAYOFFS', color: 'bg-fuchsia-600' },
-    done: { label: 'COMPLETE', color: 'bg-emerald-600' },
+    setup: { label: 'SETUP' },
+    league: { label: 'LEAGUE' },
+    playoffs: { label: 'PLAYOFFS' },
+    done: { label: 'DONE' },
   };
-  const { label, color } = map[phase];
+  const { label } = map[phase] || map.setup;
+  const isAccent = phase === 'league' || phase === 'playoffs';
   return (
-    <span className={`${color} text-[10px] tracking-[0.2em] px-2 py-1 rounded font-bold text-white`}>
+    <span
+      className={`text-[9px] tracking-[0.15em] px-1.5 py-0.5 rounded font-bold
+        ${isAccent ? 'accent-bg' : 'bg-zinc-700 text-zinc-200'}`}
+    >
       {label}
     </span>
   );

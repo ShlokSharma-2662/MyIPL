@@ -5,7 +5,7 @@ import { simulateMatch, generateSchedule, pickGodModeMatches } from '../simulati
 import { recalcAll, accumulateMatchStats, computeNRR, recalcAllInternational } from '../stats';
 import { generateInternationalSchedule, INTERNATIONAL_ROSTERS, INTERNATIONAL_TEAMS } from '../internationalData';
 import { FORMATS } from '../formats';
-import { LEGACY_HISTORY, LEGACY_RIVALRIES } from '../historyData';
+import { LEGACY_HISTORY, LEGACY_RIVALRIES, seedRivalriesForTeam } from '../historyData';
 import { getGameState, saveGameState, clearGameState } from '../api';
 
 const STORAGE_KEY = 'ipl_sim_state_v2'; // Increment to avoid state collision
@@ -42,7 +42,7 @@ export function useTournament() {
   const [schedule, setSchedule] = useState([]);
   const [results, setResults] = useState([]);
   const [phase, setPhase] = useState('setup'); // setup | league | playoffs | done
-  const [tab, setTab] = useState('table');
+  const [tab, setTab] = useState('home');
   const [playoff, setPlayoff] = useState({ q1: null, elim: null, q2: null, final: null });
   const [playoffStep, setPlayoffStep] = useState(0);
   const [champion, setChampion] = useState(null);
@@ -283,6 +283,7 @@ export function useTournament() {
     setSchedule(sched);
     setResults([]);
     setPhase('league');
+    setTab('home');
     setPlayoff({ q1: null, elim: null, q2: null, final: null });
     setPlayoffStep(0);
     setChampion(null);
@@ -297,6 +298,11 @@ export function useTournament() {
     // Set base popularity based on team choices
     const basePops = { CSK: 85, MI: 82, RCB: 80, KKR: 78, SRH: 72, DC: 70, RR: 72, PBKS: 65, GT: 68, LSG: 65 };
     setFanPopularity(basePops[teamId] || 70);
+
+    // Before any player-completed seasons, seed rivalries for the chosen franchise.
+    if (history.length <= LEGACY_HISTORY.length) {
+      setCareerRivalries(seedRivalriesForTeam(teamId));
+    }
     
     const empty = recalcAll([], name, teamId);
     setTeamStats(empty.teamStats);
@@ -624,11 +630,11 @@ export function useTournament() {
   function startChampionsLeague() {
     setClt20Active(true);
     setPhase('league');
-    setTab('table');
+    setTab('home');
     setTourney('CLT20 Champions League');
     setResults([]);
     
-    const cltTeams = ['CSK', 'S6', 'TKR', 'LS', 'JS', 'AA'];
+    const cltTeams = [userTeam, 'S6', 'TKR', 'LS', 'JS', 'AA'];
     const cltSched = [];
     for (let i = 0; i < cltTeams.length; i++) {
       for (let j = i + 1; j < cltTeams.length; j++) {

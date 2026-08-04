@@ -660,7 +660,7 @@ export default function HistoryView({
                         <p className="text-xs text-zinc-450 leading-normal mt-0.5">
                           {isIcon 
                             ? (formatTab === 'IPL' 
-                              ? `Congratulations! Your legendary career rating of ${userCareerRating.toFixed(1)} makes you the dynamic #1 superstar player for CSK.` 
+                              ? `Congratulations! Your legendary career rating of ${userCareerRating.toFixed(1)} makes you the dynamic #1 superstar player for ${userTeam}.`
                               : `Congratulations! Your legendary career rating of ${userCareerRating.toFixed(1)} makes you an international cricketing legend.`)
                             : (formatTab === 'IPL'
                               ? `Increase your career batting average and strike rate to surpass Ruturaj Gaikwad's benchmark rating of 62.2.`
@@ -680,7 +680,7 @@ export default function HistoryView({
 
                     <div className="flex justify-between items-center text-[9px] text-zinc-500 font-mono">
                       <span>Your Career Rating: <strong className="text-zinc-350">{userCareerRating.toFixed(1)}</strong></span>
-                      <span>{formatTab === 'IPL' ? 'CSK Icon Benchmark: 62.2' : 'IND Legend Benchmark: 75.0'}</span>
+                      <span>{formatTab === 'IPL' ? `${userTeam} Icon Benchmark: 62.2` : 'IND Legend Benchmark: 75.0'}</span>
                     </div>
                   </div>
                 </div>

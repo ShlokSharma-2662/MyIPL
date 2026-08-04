@@ -2,9 +2,8 @@ import React, { useState } from 'react';
 import { ChevronRight, Filter, Zap } from 'lucide-react';
 import TeamBadge from './TeamBadge';
 import { TEAMS } from '../data';
-import { USER_TEAM } from '../constants';
 
-export default function ResultsList({ results, onOpen }) {
+export default function ResultsList({ results, onOpen, userTeam }) {
   const [onlyMine, setOnlyMine] = useState(false);
 
   if (results.length === 0) {
@@ -12,14 +11,14 @@ export default function ResultsList({ results, onOpen }) {
   }
 
   const filtered = onlyMine
-    ? results.filter(m => m.home === USER_TEAM || m.away === USER_TEAM)
+    ? results.filter(m => m.home === userTeam || m.away === userTeam)
     : results;
 
   return (
     <div className="animate-fade-in">
       <div className="flex items-center justify-between mb-3">
         <div className="text-[10px] tracking-[0.25em] text-zinc-500 font-bold">
-          {filtered.length} {onlyMine ? `${USER_TEAM} MATCHES` : 'MATCHES'}
+          {filtered.length} {onlyMine ? `${userTeam} MATCHES` : 'MATCHES'}
         </div>
         <button
           onClick={() => setOnlyMine(v => !v)}
@@ -29,22 +28,22 @@ export default function ResultsList({ results, onOpen }) {
               : 'bg-zinc-900/50 border-zinc-800 text-zinc-400 hover:text-zinc-200'
           }`}
         >
-          <Filter className="w-3 h-3" /> {onlyMine ? `SHOWING ${USER_TEAM}` : `FILTER ${USER_TEAM} ONLY`}
+          <Filter className="w-3 h-3" /> {onlyMine ? `SHOWING ${userTeam}` : `FILTER ${userTeam} ONLY`}
         </button>
       </div>
       <div className="grid gap-2">
-        {filtered.map((m, idx) => {
+        {filtered.map((m) => {
           const realIdx = results.indexOf(m);
           const winningTeam = TEAMS.find(t => t.id === m.winner);
-          const isMine = m.home === USER_TEAM || m.away === USER_TEAM;
-          const cskWon = m.winner === USER_TEAM;
+          const isMine = m.home === userTeam || m.away === userTeam;
+          const userWon = m.winner === userTeam;
           return (
             <button
               key={realIdx}
               onClick={() => onOpen(m)}
               className={`w-full py-3 px-4 flex items-center gap-4 border rounded-lg transition-all hover:scale-[1.01] hover:shadow-lg text-left group ${
                 isMine
-                  ? `bg-amber-500/5 border-amber-500/30 hover:bg-amber-500/10 ${cskWon ? 'shadow-[inset_2px_0_0_0_rgb(52,211,153)]' : 'shadow-[inset_2px_0_0_0_rgb(248,113,113)]'}`
+                  ? `bg-amber-500/5 border-amber-500/30 hover:bg-amber-500/10 ${userWon ? 'shadow-[inset_2px_0_0_0_rgb(52,211,153)]' : 'shadow-[inset_2px_0_0_0_rgb(248,113,113)]'}`
                   : 'bg-zinc-900/40 border-zinc-800/50 hover:bg-zinc-800/60'
               }`}
             >
@@ -62,8 +61,8 @@ export default function ResultsList({ results, onOpen }) {
               <div className="text-xs text-zinc-400 font-mono hidden sm:block bg-black/40 px-2 py-1 rounded border border-white/5">
                 {m.inn1.totalRuns}/{m.inn1.wickets} — {m.inn2.totalRuns}/{m.inn2.wickets}
               </div>
-              <div className="text-xs font-semibold px-2 py-1 rounded bg-black/20 border border-white/5" style={{ color: winningTeam.primary }}>
-                {winningTeam.short} won
+              <div className="text-xs font-semibold px-2 py-1 rounded bg-black/20 border border-white/5" style={{ color: winningTeam?.primary }}>
+                {winningTeam?.short || m.winner} won
               </div>
               <div className="text-[10px] text-zinc-500 font-mono hidden md:block">
                 {m.marginType === 'Super Over' ? (
